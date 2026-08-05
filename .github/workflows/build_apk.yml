@@ -22,7 +22,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-          cache: 'gradle'
 
       # 3. Setup Flutter SDK
       - name: Set up Flutter
