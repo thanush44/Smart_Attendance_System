@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Attendance - Classroom Projector Screen</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Tailwind CSS for utility styles (custom custom styled components on top) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- QRCode.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at top right, #1a162b, #0d0b14);
+            color: #f3f4f6;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .glow-green {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+            border-color: rgba(16, 185, 129, 0.4);
+        }
+        .glow-purple {
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #a78bfa, #818cf8, #34d399);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .student-card {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+        .student-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(139, 92, 246, 0.3);
+            background: rgba(255, 255, 255, 0.04);
+        }
+        @keyframes popIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.8) translateY(20px);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+        #qrcode img {
+            margin: 0 auto;
+            border-radius: 12px;
+            padding: 8px;
+            background: #ffffff;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        .pulse-border {
+            position: relative;
+        }
+        .pulse-border::after {
+            content: '';
+            position: absolute;
+            top: -4px; left: -4px; right: -4px; bottom: -4px;
+            border-radius: 16px;
+            border: 2px solid #8b5cf6;
+            opacity: 0;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.5; }
+            100% { transform: scale(1.05); opacity: 0; }
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.01);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="p-6 md:p-8 flex flex-col justify-between">
+
+    <!-- Top Bar -->
+    <header class="flex justify-between items-center mb-8 glass-panel rounded-2xl p-4 px-6">
+        <div class="flex items-center gap-3">
+            <div class="bg-gradient-to-tr from-violet-600 to-indigo-600 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <i class="fa-solid fa-graduation-cap text-lg text-white"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight">Smart<span class="text-violet-400">Attendance</span></h1>
+                <p class="text-xs text-gray-400">Secure Double-Factor Class Check-In</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-6">
+            <div class="hidden sm:flex flex-col text-right">
+                <span class="text-xs text-gray-400">Server Connection</span>
+                <span id="connection-status" class="text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span> Disconnected
+                </span>
+            </div>
+            <div class="bg-white/5 border border-white/10 rounded-xl p-2 px-4 text-center">
+                <span class="text-xs text-gray-400 block uppercase tracking-wider">Present</span>
+                <span id="present-count" class="text-xl font-extrabold text-emerald-400">0</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-grow">
+        
+        <!-- Left Column: Class Info & QR Code (Col-span 5) -->
+        <section class="lg:col-span-5 flex flex-col gap-6">
+            <div class="glass-panel rounded-3xl p-6 flex flex-col items-center justify-between text-center flex-grow relative overflow-hidden">
+                <!-- Decorative background elements -->
+                <div class="absolute top-0 right-0 w-48 h-48 bg-violet-600/10 rounded-full blur-3xl -z-10"></div>
+                <div class="absolute bottom-0 left-0 w-48 h-48 bg-emerald-600/5 rounded-full blur-3xl -z-10"></div>
+
+                <div class="w-full">
+                    <span class="bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">
+                        Active Attendance Session
+                    </span>
+                    <h2 id="class-name" class="text-3xl font-extrabold mt-3 tracking-tight">Loading Class...</h2>
+                    <p id="class-code" class="text-indigo-300 font-medium text-sm mt-1 uppercase">---</p>
+                </div>
+
+                <!-- Dynamic QR Section -->
+                <div class="my-8 flex flex-col items-center justify-center">
+                    <div class="p-4 bg-white/5 rounded-2xl border border-white/10 shadow-inner relative pulse-border">
+                        <div id="qrcode" class="w-64 h-64 flex items-center justify-center bg-white rounded-xl">
+                            <!-- QR code library will render target here -->
+                            <i class="fa-solid fa-qrcode text-5xl text-violet-400 animate-pulse"></i>
+                        </div>
+                    </div>
+                    
+                    <!-- Expire Slider / Progress -->
+                    <div class="w-64 mt-6">
+                        <div class="flex justify-between text-xs text-gray-400 mb-1.5 font-medium">
+                            <span>Scanning Proximity Required</span>
+                            <span id="expiry-timer" class="text-violet-400">Code dynamic</span>
+                        </div>
+                        <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden border border-white/5">
+                            <div id="expiry-bar" class="bg-gradient-to-r from-violet-500 to-indigo-500 h-full w-full transition-all duration-1000 ease-linear"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BLE details -->
+                <div class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-left">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                            <i class="fa-solid fa-bluetooth text-lg"></i>
+                        </div>
+                        <div>
+                            <span class="text-xs text-gray-400 block font-medium">Teacher Proximity BLE UUID</span>
+                            <code id="ble-uuid" class="text-xs font-mono text-indigo-300 break-all select-all">Waiting for session...</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column: Checked-in Students (Col-span 7) -->
+        <section class="lg:col-span-7 flex flex-col glass-panel rounded-3xl p-6 min-h-[500px]">
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h3 class="text-xl font-bold tracking-tight">Attendance Wall</h3>
+                    <p class="text-xs text-gray-400 mt-0.5">Real-time successful student check-ins</p>
+                </div>
+                <div class="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full font-semibold">
+                    <i class="fa-solid fa-circle-check animate-pulse"></i> Live Syncing
+                </div>
+            </div>
+
+            <!-- Students Grid -->
+            <div id="students-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto max-h-[550px] pr-2 flex-grow content-start">
+                <!-- Placeholder when empty -->
+                <div id="empty-state" class="col-span-full py-20 flex flex-col items-center justify-center text-center text-gray-500">
+                    <div class="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-2xl mb-4 text-gray-400">
+                        <i class="fa-solid fa-users"></i>
+                    </div>
+                    <p class="font-medium text-gray-300">Class Attendance is Active</p>
+                    <p class="text-xs text-gray-500 max-w-xs mt-1">Students should open the app, verify their face, and scan the QR code to check in.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Session URL Input modal/bar for easy launching -->
+    <footer class="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 glass-panel rounded-2xl p-4 text-sm text-gray-400">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-circle-info text-violet-400"></i>
+            <span>Load a Session ID to view projector details:</span>
+        </div>
+        <div class="flex gap-2 w-full sm:w-auto">
+            <input type="number" id="session-input" placeholder="Enter Session ID" class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 w-full sm:w-40 text-center font-semibold">
+            <button id="load-btn" class="bg-violet-600 hover:bg-violet-700 text-white rounded-xl px-4 py-2 font-semibold transition-colors shadow-md shadow-violet-600/10">
+                Connect
+            </button>
+        </div>
+    </footer>
+
+    <!-- App JavaScript -->
+    <script src="app.js"></script>
+</body>
+</html>

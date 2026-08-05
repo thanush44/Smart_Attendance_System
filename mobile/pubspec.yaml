@@ -1,0 +1,37 @@
+name: smart_attendance
+description: "A secure double-factor attendance app with BLE proximity, Face Liveness, and Dynamic QR verification."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Navigation and State
+  cupertino_icons: ^1.0.6
+  http: ^1.2.1
+  shared_preferences: ^2.2.3
+
+  # Camera and Scanning
+  camera: ^0.10.5+9
+  mobile_scanner: ^4.0.1
+
+  # Bluetooth Low Energy (BLE)
+  flutter_blue_plus: ^1.31.11           # For Student (BLE scanning)
+  flutter_ble_peripheral: ^2.3.0        # For Teacher (BLE advertising/peripheral mode)
+
+  # Machine Learning (On-Device Face and Liveness)
+  google_mlkit_face_detection: ^0.12.0
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
