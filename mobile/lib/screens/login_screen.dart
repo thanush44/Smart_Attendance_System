@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
 import 'dart:convert';
 import 'dart:math';
 import '../services/api_service.dart';
@@ -27,6 +28,16 @@ class _LoginScreenState extends State<LoginScreen> {
   // Face Registration Simulation Data
   bool _faceRegistered = false;
   String? _registeredEmbedding;
+
+  // Camera fields for enrollment preview
+  CameraController? _cameraController;
+  bool _cameraInitialized = false;
+
+  @override
+  void dispose() {
+    _cameraController?.dispose();
+    super.dispose();
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -96,6 +107,37 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _initCameraForEnrollment(StateSetter setDialogState) async {
+    try {
+      final cameras = await availableCameras();
+      final frontCamera = cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+
+      _cameraController = CameraController(
+        frontCamera,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
+      await _cameraController!.initialize();
+      setDialogState(() {
+        _cameraInitialized = true;
+      });
+    } catch (e) {
+      debugPrint("Error initializing camera for enrollment: $e");
+    }
+  }
+
+  void _disposeCameraForEnrollment() {
+    if (_cameraController != null) {
+      _cameraController!.dispose();
+      _cameraController = null;
+    }
+    _cameraInitialized = false;
+  }
+
   // Opens a simulated dialog for camera face capture and registration
   void _startFaceEnrollment() {
     showDialog(
@@ -104,6 +146,11 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Trigger camera initialization if not initialized yet
+            if (!_cameraInitialized && _cameraController == null) {
+              _initCameraForEnrollment(setDialogState);
+            }
+
             bool scanning = false;
             double progress = 0.0;
             
@@ -124,6 +171,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 _faceRegistered = true;
                 _registeredEmbedding = jsonEncode(mockEmbedding);
               });
+              
+              _disposeCameraForEnrollment();
               
               if (context.mounted) {
                 Navigator.of(context).pop();
@@ -151,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 20),
                   
-                  // Camera Capture View Frame
+                  // Camera Capture View Frame (Circular)
                   Container(
                     width: 200,
                     height: 200,
@@ -163,20 +212,29 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       color: Colors.black26,
                     ),
-                    child: Center(
+                    child: ClipOval(
                       child: scanning
-                        ? Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const CircularProgressIndicator(color: Color(0xFF34D399)),
-                              const SizedBox(height: 10),
-                              Text(
-                                '${(progress * 100).toInt()}%',
-                                style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF34D399)),
-                              )
-                            ],
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const CircularProgressIndicator(color: Color(0xFF34D399)),
+                                const SizedBox(height: 10),
+                                Text(
+                                  '${(progress * 100).toInt()}%',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF34D399)),
+                                )
+                              ],
+                            ),
                           )
-                        : const Icon(Icons.face, size: 80, color: Color(0xFF8B5CF6)),
+                        : (_cameraInitialized && _cameraController != null && _cameraController!.value.isInitialized)
+                            ? AspectRatio(
+                                aspectRatio: 1.0, // force square crop inside ClipOval
+                                child: CameraPreview(_cameraController!),
+                              )
+                            : const Center(
+                                child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+                              ),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -188,11 +246,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () {
+                            _disposeCameraForEnrollment();
+                            Navigator.of(context).pop();
+                          },
                           child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
                         ),
                         ElevatedButton(
-                          onPressed: simulateScanning,
+                          onPressed: (_cameraInitialized && _cameraController != null && _cameraController!.value.isInitialized)
+                              ? simulateScanning
+                              : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF8B5CF6),
                             minimumSize: const Size(120, 44),

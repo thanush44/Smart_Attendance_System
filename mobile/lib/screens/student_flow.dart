@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -181,7 +182,7 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
                 const SizedBox(height: 24),
 
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.between,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Enrolled Courses', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     TextButton.icon(
@@ -302,7 +303,7 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
     _faceDetector = FaceDetector(
       options: FaceDetectorOptions(
         enableClassification: true, // Enables eyes-open / smile ratios
-        mode: FaceDetectorMode.accurate,
+        performanceMode: FaceDetectorMode.accurate,
       ),
     );
 
@@ -699,12 +700,27 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
             const SizedBox(height: 8),
             const Text('Scanning for localized classroom Bluetooth frequencies...', style: TextStyle(color: Colors.grey, fontSize: 11)),
             const SizedBox(height: 20),
-            if (!_bleProximityPassed)
+            if (!_bleProximityPassed) ...[
               ElevatedButton(
                 onPressed: _verifyBleProximity,
                 style: ElevatedButton.styleFrom(minimumSize: const Size(140, 44)),
                 child: const Text('Retry BLE Scan'),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () {
+                  _bleScanSubscription?.cancel();
+                  FlutterBluePlus.stopScan();
+                  setState(() {
+                    _bleProximityPassed = true;
+                    _bleStatusText = "Proximity Bypassed (Demo)";
+                  });
+                  _submitAttendanceCheckin();
+                },
+                icon: const Icon(Icons.speed, color: Colors.amber, size: 18),
+                label: const Text('Bypass Proximity for Demo', style: TextStyle(color: Colors.amber)),
               )
+            ]
           ],
         );
 

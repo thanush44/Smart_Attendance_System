@@ -183,7 +183,7 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
                 const SizedBox(height: 24),
                 
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.between,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
                       'Your Active Courses',
@@ -306,7 +306,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   // Turn off BLE broadcasting
   Future<void> _stopBleAdvertising() async {
     try {
-      if (await _blePeripheral.isAdvertising()) {
+      if (await _blePeripheral.isAdvertising) {
         await _blePeripheral.stop();
       }
       setState(() => _isAdvertising = false);
@@ -407,7 +407,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                             const Text('Projector Session ID:', style: TextStyle(fontSize: 13, color: Colors.grey)),
                             Text(
                               '${_sessionData!['session_id']}',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.extrabold, color: theme.colorScheme.primary),
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: theme.colorScheme.primary),
                             ),
                           ],
                         ),
@@ -425,11 +425,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
 
                 // Attendance title
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.between,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Present Students', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, py: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: const Color(0xFF34D399).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),

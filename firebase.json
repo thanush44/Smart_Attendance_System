@@ -1,0 +1,11 @@
+{
+  "hosting": {
+    "site": "smart-attendace-45704",
+    "public": "web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

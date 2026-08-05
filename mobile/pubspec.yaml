@@ -19,10 +19,16 @@ dependencies:
   # Camera and Scanning
   camera: ^0.10.5+9
   mobile_scanner: ^4.0.1
+  dart_dash_otp: any
 
   # Bluetooth Low Energy (BLE)
   flutter_blue_plus: ^1.31.11           # For Student (BLE scanning)
   flutter_ble_peripheral: ^2.1.1        # For Teacher (BLE advertising/peripheral mode)
+
+  # Firebase Integration
+  firebase_core: ^2.27.0
+  firebase_auth: ^4.17.8
+  cloud_firestore: ^4.15.8
 
   # Machine Learning (On-Device Face and Liveness)
   google_mlkit_face_detection: ^0.12.0

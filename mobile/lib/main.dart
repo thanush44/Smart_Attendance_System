@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'screens/login_screen.dart';
 import 'screens/student_flow.dart';
 import 'screens/teacher_home.dart';
 import 'services/api_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const SmartAttendanceApp());
 }
 
@@ -29,7 +31,7 @@ class SmartAttendanceApp extends StatelessWidget {
           error: Color(0xFFEF4444),
         ),
         fontFamily: 'Outfit',
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: const Color(0xFF1E1B29),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
