@@ -22,7 +22,7 @@ dependencies:
 
   # Bluetooth Low Energy (BLE)
   flutter_blue_plus: ^1.31.11           # For Student (BLE scanning)
-  flutter_ble_peripheral: ^2.3.0        # For Teacher (BLE advertising/peripheral mode)
+  flutter_ble_peripheral: ^2.1.1        # For Teacher (BLE advertising/peripheral mode)
 
   # Machine Learning (On-Device Face and Liveness)
   google_mlkit_face_detection: ^0.12.0
