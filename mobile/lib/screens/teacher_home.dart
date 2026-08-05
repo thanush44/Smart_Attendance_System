@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 
 class TeacherHomeScreen extends StatefulWidget {
@@ -25,12 +26,15 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
     setState(() => _isLoading = true);
     try {
       final classes = await ApiService.getUserClasses(ApiService.currentUser!['id']);
+      print("TeacherHomeScreen _fetchClasses loaded: $classes");
       setState(() {
         _classes = classes;
         _isLoading = false;
       });
-    } catch (e) {
+    } catch (e, stack) {
       setState(() => _isLoading = false);
+      print("TeacherHomeScreen _fetchClasses Error: $e");
+      print("TeacherHomeScreen Stack trace: $stack");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading classes: $e')),
       );
@@ -94,16 +98,22 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
     );
   }
 
-  // Request Bluetooth and Location permissions (needed for BLE peripheral mode on Android)
+  // Request Bluetooth permissions (needed for BLE peripheral mode on Android)
   Future<bool> _requestBlePermissions() async {
     Map<Permission, PermissionStatus> statuses = await [
-      Permission.bluetooth,
       Permission.bluetoothAdvertise,
       Permission.bluetoothConnect,
       Permission.location,
     ].request();
 
-    return statuses.values.every((status) => status.isGranted);
+    statuses.forEach((permission, status) {
+      print("BLE Permission: $permission => $status");
+    });
+
+    final advertiseGranted = statuses[Permission.bluetoothAdvertise]?.isGranted ?? false;
+    final connectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? false;
+
+    return advertiseGranted && connectGranted;
   }
 
   // Navigate to Class Active Session control screen
@@ -404,16 +414,58 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Projector Session ID:', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                            Text(
-                              '${_sessionData!['session_id']}',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: theme.colorScheme.primary),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Projector Session PIN (Short):', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${_sessionData!['short_id'] ?? 'N/A'}',
+                                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF34D399), letterSpacing: 1),
+                                ),
+                              ],
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.copy, color: Color(0xFF8B5CF6)),
+                              tooltip: 'Copy Session PIN',
+                              onPressed: () {
+                                final pin = _sessionData!['short_id'] ?? '';
+                                Clipboard.setData(ClipboardData(text: pin));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Session PIN copied to clipboard!')),
+                                );
+                              },
+                            )
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Full Session ID:', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                            Row(
+                              children: [
+                                Text(
+                                  '${_sessionData!['session_id']}',
+                                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
+                                ),
+                                const SizedBox(width: 6),
+                                GestureDetector(
+                                  onTap: () {
+                                    Clipboard.setData(ClipboardData(text: _sessionData!['session_id']));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Full Session ID copied!')),
+                                    );
+                                  },
+                                  child: const Icon(Icons.copy, size: 12, color: Colors.grey),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 12),
                         const Text(
-                          'Open the Web Dashboard on the projector and enter the Session ID above to display the rolling QR code.',
+                          'Open the Web Dashboard on the projector and enter the Session PIN above to display the rolling QR code.',
                           style: TextStyle(fontSize: 11, color: Colors.grey),
                           textAlign: TextAlign.center,
                         )

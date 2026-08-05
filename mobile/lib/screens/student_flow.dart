@@ -93,12 +93,18 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
     // Request required camera and bluetooth/location permissions
     Map<Permission, PermissionStatus> statuses = await [
       Permission.camera,
-      Permission.bluetooth,
       Permission.bluetoothScan,
+      Permission.bluetoothConnect,
       Permission.location,
     ].request();
 
-    if (statuses.values.any((status) => !status.isGranted)) {
+    final isCameraGranted = statuses[Permission.camera] == PermissionStatus.granted;
+    final isScanGranted = statuses[Permission.bluetoothScan] == PermissionStatus.granted;
+    final isConnectGranted = statuses[Permission.bluetoothConnect] == PermissionStatus.granted;
+    final isLocationGranted = statuses[Permission.location] == PermissionStatus.granted ||
+                             statuses[Permission.location] == PermissionStatus.limited;
+
+    if (!isCameraGranted || !isScanGranted || !isConnectGranted || !isLocationGranted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Camera, Bluetooth, and Location permissions are required to check in.')),

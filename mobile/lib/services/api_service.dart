@@ -76,8 +76,9 @@ class ApiService {
   }
 
   // Fetch enrolled/taught classes
-  static Future<List<dynamic>> getUserClasses(int dummyId) async {
+  static Future<List<dynamic>> getUserClasses(dynamic dummyId) async {
     final uid = currentUid;
+    print("getUserClasses: currentUid=$uid, currentUser=$currentUser");
     if (uid == null || currentUser == null) return [];
 
     final role = currentUser!['role'];
@@ -103,7 +104,7 @@ class ApiService {
   }
 
   // Enroll in a class (Student)
-  static Future<void> enrollClass(int dummyId, String classCode) async {
+  static Future<void> enrollClass(dynamic dummyId, String classCode) async {
     final uid = currentUid;
     if (uid == null) throw Exception('Not authenticated');
 
@@ -134,16 +135,21 @@ class ApiService {
   }) async {
     final uid = currentUid;
     if (uid == null) throw Exception('Not authenticated');
+    print("createClass: currentUid=$uid, creating code=$code");
 
     // Verify code uniqueness
     final dupCheck = await FirebaseFirestore.instance
         .collection('classes')
         .where('code', isEqualTo: code)
-        .limit(1)
         .get();
 
+    print("createClass dupCheck count: ${dupCheck.docs.length}");
+    for (var doc in dupCheck.docs) {
+      print("createClass: found duplicate doc: ${doc.id} => ${doc.data()}");
+    }
+
     if (dupCheck.docs.isNotEmpty) {
-      throw Exception('Course code already exists.');
+      throw Exception('Course code already exists. (Matching Doc ID: ${dupCheck.docs.first.id})');
     }
 
     final newClass = {
@@ -182,11 +188,13 @@ class ApiService {
       await doc.reference.update({'is_active': false});
     }
 
-    // Generate random BLE UUID and base32 secret
+    // Generate random BLE UUID, base32 secret, and a short 6-digit session pin
     final bleUuid = _generateUuid();
     final otpSecret = _generateBase32Secret();
+    final shortId = (100000 + Random().nextInt(900000)).toString(); // e.g. "491827"
 
     final sessionData = {
+      'short_id': shortId,
       'class_id': classId,
       'class_name': classData['name'],
       'ble_uuid': bleUuid,
@@ -199,6 +207,7 @@ class ApiService {
     
     return {
       'session_id': docRef.id, // String document ID
+      'short_id': shortId,
       'class_id': classId,
       'class_name': classData['name'],
       'ble_uuid': bleUuid,

@@ -20,6 +20,7 @@ let currentToken = null;
 let currentSessionId = null;
 let otpInterval = null;
 let unsubscribeAttendance = null;
+let unsubscribeSession = null;
 
 // DOM Elements
 const classTitleEl = document.getElementById("class-name");
@@ -62,12 +63,40 @@ loadBtn.addEventListener("click", () => {
 });
 
 // Connect to Firestore Session and set up real-time listener
+// Gracefully handle deactivation of active session
+function handleSessionEnded() {
+    if (otpInterval) clearInterval(otpInterval);
+    otpInterval = null;
+    currentToken = null;
+    
+    classCodeEl.innerText = "Session Ended";
+    connectionStatusEl.className = "text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end";
+    connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Session Closed`;
+    
+    qrcodeContainer.innerHTML = `
+        <div class="text-rose-400 text-center py-8">
+            <i class="fa-solid fa-circle-xmark text-5xl block mb-3 animate-bounce"></i>
+            <span class="font-bold text-lg block">Attendance Closed</span>
+            <span class="text-xs text-gray-400">The teacher has ended this session.</span>
+        </div>
+    `;
+    
+    if (unsubscribeAttendance) {
+        unsubscribeAttendance();
+        unsubscribeAttendance = null;
+    }
+    if (unsubscribeSession) {
+        unsubscribeSession();
+        unsubscribeSession = null;
+    }
+}
+
+// Connect to Firestore Session and set up real-time listener
 async function connectToSession(sessionId) {
     // Clean up previous listeners & intervals
     if (otpInterval) clearInterval(otpInterval);
     if (unsubscribeAttendance) unsubscribeAttendance();
-    
-    currentSessionId = sessionId;
+    if (unsubscribeSession) unsubscribeSession();
     
     // Set status to connecting
     connectionStatusEl.className = "text-sm font-semibold text-amber-500 flex items-center gap-2 justify-end";
@@ -79,79 +108,110 @@ async function connectToSession(sessionId) {
     showEmptyState();
     
     try {
-        // 1. Fetch Session from Firestore
-        const sessionDoc = await db.collection("sessions").doc(sessionId).get();
+        let docId = sessionId;
         
-        if (!sessionDoc.exists) {
-            alert("Attendance session not found. Check the ID.");
-            connectionStatusEl.className = "text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end";
-            connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Session Not Found`;
-            qrcodeContainer.innerHTML = `<div class="text-rose-400 text-center"><i class="fa-solid fa-triangle-exclamation text-4xl block mb-2"></i> Session Not Found</div>`;
-            return;
-        }
-
-        const sessionData = sessionDoc.data();
-        
-        // 2. Render class info
-        classTitleEl.innerText = sessionData.class_name;
-        classCodeEl.innerText = "Session Active";
-        bleUuidEl.innerText = sessionData.ble_uuid;
-
-        connectionStatusEl.className = "text-sm font-semibold text-emerald-500 flex items-center gap-2 justify-end";
-        connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Connected to Cloud`;
-
-        // 3. Set up client-side TOTP loop (rolling token every 10 seconds)
-        const totp = new OTPAuth.TOTP({
-            secret: OTPAuth.Secret.fromBase32(sessionData.otp_secret),
-            period: 10,
-            digits: 6
-        });
-
-        otpInterval = setInterval(() => {
-            const nowSeconds = Math.floor(Date.now() / 1000);
-            const expiresIn = 10 - (nowSeconds % 10);
-            const token = totp.generate();
-            
-            // Draw QR code if token changes
-            if (currentToken !== token) {
-                currentToken = token;
-                renderQRCode(token);
+        // If the code entered is a 6-character short PIN, resolve it to the active document ID first
+        if (sessionId.length === 6) {
+            connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span> Resolving Session PIN...`;
+            const querySnapshot = await db.collection("sessions")
+                .where("short_id", "==", sessionId)
+                .where("is_active", "==", true)
+                .limit(1)
+                .get();
+                
+            if (querySnapshot.empty) {
+                alert("No active session found matching PIN: " + sessionId);
+                connectionStatusEl.className = "text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end";
+                connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Active PIN Not Found`;
+                qrcodeContainer.innerHTML = `<div class="text-rose-400 text-center"><i class="fa-solid fa-triangle-exclamation text-4xl block mb-2"></i> PIN Not Found or Expired</div>`;
+                return;
             }
             
-            updateCountdown(expiresIn);
-        }, 1000);
+            docId = querySnapshot.docs[0].id;
+        }
 
-        // 4. Set up Real-time Snapshot Listener on Attendance Collection
-        unsubscribeAttendance = db.collection("attendance")
-            .where("session_id", "==", sessionId)
-            .orderBy("timestamp", "asc")
-            .onSnapshot((snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    if (change.type === "added") {
-                        hideEmptyState();
-                        const checkin = change.doc.data();
+        currentSessionId = docId;
+
+        // Start listening to the Session Document in real time
+        unsubscribeSession = db.collection("sessions").doc(docId)
+            .onSnapshot((sessionDoc) => {
+                if (!sessionDoc.exists) {
+                    handleSessionEnded();
+                    return;
+                }
+                
+                const sessionData = sessionDoc.data();
+                if (!sessionData.is_active) {
+                    handleSessionEnded();
+                    return;
+                }
+                
+                // Render class info
+                classTitleEl.innerText = sessionData.class_name;
+                classCodeEl.innerText = "Session Active";
+                bleUuidEl.innerText = sessionData.ble_uuid;
+
+                // Initialize client-side TOTP loop if not already started
+                if (!otpInterval) {
+                    connectionStatusEl.className = "text-sm font-semibold text-emerald-500 flex items-center gap-2 justify-end";
+                    connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Connected to Cloud`;
+                    
+                    const totp = new OTPAuth.TOTP({
+                        secret: OTPAuth.Secret.fromBase32(sessionData.otp_secret),
+                        period: 10,
+                        digits: 6
+                    });
+
+                    otpInterval = setInterval(() => {
+                        const nowSeconds = Math.floor(Date.now() / 1000);
+                        const expiresIn = 10 - (nowSeconds % 10);
+                        const token = totp.generate();
                         
-                        // Map timestamp parameter
-                        let timeStr = "";
-                        if (checkin.timestamp) {
-                            const date = checkin.timestamp.toDate();
-                            timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        } else {
-                            timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        // Draw QR code if token changes
+                        if (currentToken !== token) {
+                            currentToken = token;
+                            renderQRCode(token);
                         }
+                        
+                        updateCountdown(expiresIn);
+                    }, 1000);
+                }
 
-                        addStudentToGrid({
-                            student_id: checkin.student_id,
-                            student_name: checkin.student_name,
-                            student_username: checkin.student_username,
-                            time_str: timeStr
+                // Start listening to the attendance collection for this session ID
+                if (!unsubscribeAttendance) {
+                    unsubscribeAttendance = db.collection("attendance")
+                        .where("session_id", "==", docId)
+                        .orderBy("timestamp", "asc")
+                        .onSnapshot((snapshot) => {
+                            snapshot.docChanges().forEach((change) => {
+                                if (change.type === "added") {
+                                    hideEmptyState();
+                                    const checkin = change.doc.data();
+                                    
+                                    let timeStr = "";
+                                    if (checkin.timestamp) {
+                                        const date = checkin.timestamp.toDate();
+                                        timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                    } else {
+                                        timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                    }
+
+                                    addStudentToGrid({
+                                        student_id: checkin.student_id,
+                                        student_name: checkin.student_name,
+                                        student_username: checkin.student_username,
+                                        time_str: timeStr
+                                    });
+                                }
+                            });
+                        }, (err) => {
+                            console.error("Firestore listening error: ", err);
                         });
-                    }
-                });
+                }
             }, (err) => {
-                console.error("Firestore listening error: ", err);
+                console.error("Session snapshot error:", err);
                 connectionStatusEl.className = "text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end";
-                connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span> Cloud Error`;
+                connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Connection Error`;
             });
 
     } catch (e) {
