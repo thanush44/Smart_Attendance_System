@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'dart:convert';
 import 'dart:math';
 import '../services/api_service.dart';
@@ -32,10 +33,12 @@ class _LoginScreenState extends State<LoginScreen> {
   // Camera fields for enrollment preview
   CameraController? _cameraController;
   bool _cameraInitialized = false;
+  FaceDetector? _faceDetector;
 
   @override
   void dispose() {
     _cameraController?.dispose();
+    _faceDetector?.close();
     super.dispose();
   }
 
@@ -122,6 +125,15 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       await _cameraController!.initialize();
+      
+      _faceDetector = FaceDetector(
+        options: FaceDetectorOptions(
+          enableClassification: true,
+          enableLandmarks: true,
+          performanceMode: FaceDetectorMode.accurate,
+        ),
+      );
+
       setDialogState(() {
         _cameraInitialized = true;
       });
@@ -136,10 +148,15 @@ class _LoginScreenState extends State<LoginScreen> {
       _cameraController = null;
     }
     _cameraInitialized = false;
+    _faceDetector?.close();
+    _faceDetector = null;
   }
 
   // Opens a simulated dialog for camera face capture and registration
   void _startFaceEnrollment() {
+    bool scanning = false;
+    String statusText = "Position your face inside the frame and look directly at the camera.";
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -150,35 +167,75 @@ class _LoginScreenState extends State<LoginScreen> {
             if (!_cameraInitialized && _cameraController == null) {
               _initCameraForEnrollment(setDialogState);
             }
-
-            bool scanning = false;
-            double progress = 0.0;
             
-            void simulateScanning() async {
-              setDialogState(() => scanning = true);
-              for (int i = 0; i <= 10; i++) {
-                await Future.delayed(const Duration(milliseconds: 250));
-                setDialogState(() {
-                  progress = i / 10.0;
-                });
-              }
+            void captureAndProcessFace() async {
+              if (_cameraController == null || !_cameraInitialized) return;
               
-              // Generate mock 128-float face embedding array
-              final random = Random();
-              final List<double> mockEmbedding = List.generate(128, (_) => (random.nextDouble() * 2) - 1);
-              
-              setState(() {
-                _faceRegistered = true;
-                _registeredEmbedding = jsonEncode(mockEmbedding);
+              setDialogState(() {
+                scanning = true;
+                statusText = "Capturing image...";
               });
               
-              _disposeCameraForEnrollment();
-              
-              if (context.mounted) {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(content: Text('Face template enrolled successfully!')),
-                );
+              try {
+                // 1. Take picture
+                final XFile imageFile = await _cameraController!.takePicture();
+                
+                setDialogState(() {
+                  statusText = "Analyzing facial landmarks...";
+                });
+                
+                // 2. Process image
+                final inputImage = InputImage.fromFilePath(imageFile.path);
+                final List<Face> faces = await _faceDetector!.processImage(inputImage);
+                
+                if (faces.isEmpty) {
+                  throw Exception("No face detected. Position your face in the oval and try again.");
+                }
+                
+                final Face face = faces.first;
+                
+                // 3. Extract landmarks
+                final leftEye = face.landmarks[FaceLandmarkType.leftEye];
+                final rightEye = face.landmarks[FaceLandmarkType.rightEye];
+                final nose = face.landmarks[FaceLandmarkType.noseBase];
+                
+                if (leftEye == null || rightEye == null || nose == null) {
+                  throw Exception("Facial landmarks not clear. Look directly at the camera in good lighting.");
+                }
+                
+                // 4. Compute rigid ratios (eyes & nose base only, smile invariant)
+                final double dEyes = sqrt(pow(rightEye.position.x - leftEye.position.x, 2) + pow(rightEye.position.y - leftEye.position.y, 2));
+                final double dLeftEyeNose = sqrt(pow(nose.position.x - leftEye.position.x, 2) + pow(nose.position.y - leftEye.position.y, 2));
+                final double dRightEyeNose = sqrt(pow(nose.position.x - rightEye.position.x, 2) + pow(nose.position.y - rightEye.position.y, 2));
+                
+                if (dLeftEyeNose == 0.0 || dRightEyeNose == 0.0) {
+                  throw Exception("Face alignment failed. Try again.");
+                }
+                
+                final double r1 = dEyes / dLeftEyeNose;
+                final double r2 = dEyes / dRightEyeNose;
+                
+                // 5. Serialize
+                final Map<String, double> ratios = {'r1': r1, 'r2': r2};
+                
+                setState(() {
+                  _faceRegistered = true;
+                  _registeredEmbedding = jsonEncode(ratios);
+                });
+                
+                _disposeCameraForEnrollment();
+                
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(content: Text('Face template enrolled successfully!')),
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  scanning = false;
+                  statusText = e.toString().replaceAll("Exception: ", "");
+                });
               }
             }
 
@@ -193,10 +250,10 @@ class _LoginScreenState extends State<LoginScreen> {
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
-                    'Position your face inside the frame and look directly at the camera.',
+                  Text(
+                    statusText,
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const SizedBox(height: 20),
                   
@@ -213,34 +270,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: Colors.black26,
                     ),
                     child: ClipOval(
-                      child: scanning
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const CircularProgressIndicator(color: Color(0xFF34D399)),
-                                const SizedBox(height: 10),
-                                Text(
-                                  '${(progress * 100).toInt()}%',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF34D399)),
-                                )
-                              ],
+                      child: (_cameraInitialized && _cameraController != null && _cameraController!.value.isInitialized)
+                          ? AspectRatio(
+                              aspectRatio: 1.0, // force square crop inside ClipOval
+                              child: CameraPreview(_cameraController!),
+                            )
+                          : const Center(
+                              child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
                             ),
-                          )
-                        : (_cameraInitialized && _cameraController != null && _cameraController!.value.isInitialized)
-                            ? AspectRatio(
-                                aspectRatio: 1.0, // force square crop inside ClipOval
-                                child: CameraPreview(_cameraController!),
-                              )
-                            : const Center(
-                                child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
-                              ),
                     ),
                   ),
                   const SizedBox(height: 20),
                   
                   if (scanning)
-                    const Text('Scanning face landmarks...', style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic))
+                    const Text('Analyzing face...', style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic))
                   else
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -254,7 +297,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         ElevatedButton(
                           onPressed: (_cameraInitialized && _cameraController != null && _cameraController!.value.isInitialized)
-                              ? simulateScanning
+                              ? captureAndProcessFace
                               : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF8B5CF6),

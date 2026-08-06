@@ -35,6 +35,7 @@ const emptyStateEl = document.getElementById("empty-state");
 const connectionStatusEl = document.getElementById("connection-status");
 const sessionInput = document.getElementById("session-input");
 const loadBtn = document.getElementById("load-btn");
+const closeSessionBtn = document.getElementById("close-session-btn");
 
 // Initialize page
 window.addEventListener("DOMContentLoaded", () => {
@@ -72,6 +73,9 @@ function handleSessionEnded() {
     classCodeEl.innerText = "Session Ended";
     connectionStatusEl.className = "text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end";
     connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Session Closed`;
+    
+    // Hide Close Session button
+    if (closeSessionBtn) closeSessionBtn.style.display = "none";
     
     qrcodeContainer.innerHTML = `
         <div class="text-rose-400 text-center py-8">
@@ -151,6 +155,15 @@ async function connectToSession(sessionId) {
                 classCodeEl.innerText = "Session Active";
                 bleUuidEl.innerText = sessionData.ble_uuid;
 
+                // Show Close Session button
+                if (closeSessionBtn) closeSessionBtn.style.display = "flex";
+
+                // Get start time
+                let startTime = null;
+                if (sessionData.start_time) {
+                    startTime = sessionData.start_time.toDate();
+                }
+
                 // Initialize client-side TOTP loop if not already started
                 if (!otpInterval) {
                     connectionStatusEl.className = "text-sm font-semibold text-emerald-500 flex items-center gap-2 justify-end";
@@ -174,6 +187,24 @@ async function connectToSession(sessionId) {
                         }
                         
                         updateCountdown(expiresIn);
+
+                        // Check 3-minute auto-termination
+                        if (startTime) {
+                            const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
+                            const remaining = 180 - elapsed;
+                            if (remaining <= 0) {
+                                clearInterval(otpInterval);
+                                otpInterval = null;
+                                db.collection("sessions").doc(docId).update({ is_active: false }).then(() => {
+                                    handleSessionEnded();
+                                });
+                            } else {
+                                const mins = Math.floor(remaining / 60);
+                                const secs = remaining % 60;
+                                const timeStr = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+                                classCodeEl.innerText = `Session Active (Auto-closes in ${timeStr})`;
+                            }
+                        }
                     }, 1000);
                 }
 
@@ -298,4 +329,20 @@ function showEmptyState() {
 
 function hideEmptyState() {
     emptyStateEl.style.display = "none";
+}
+
+// Manual session termination from projector screen
+if (closeSessionBtn) {
+    closeSessionBtn.addEventListener("click", async () => {
+        if (!currentSessionId) return;
+        if (confirm("Are you sure you want to close this attendance session? Students will no longer be able to check in.")) {
+            try {
+                await db.collection("sessions").doc(currentSessionId).update({
+                    is_active: false
+                });
+            } catch (e) {
+                alert("Error closing session: " + e.message);
+            }
+        }
+    });
 }

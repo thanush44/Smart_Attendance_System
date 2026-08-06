@@ -262,6 +262,49 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   List<dynamic> _checkins = [];
   Timer? _pollingTimer;
   bool _isAdvertising = false;
+  bool _checkingActiveSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkActiveSession();
+  }
+
+  Future<void> _checkActiveSession() async {
+    try {
+      final activeSession = await ApiService.getActiveSession(widget.classData['id']);
+      if (activeSession != null && mounted) {
+        setState(() {
+          _sessionData = activeSession;
+          _sessionStarted = true;
+          _checkingActiveSession = false;
+        });
+
+        // Start BLE Peripheral Advertising
+        await _startBleAdvertising(activeSession['ble_uuid']);
+
+        // Poll attendance list periodically (every 3 seconds)
+        _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+          _fetchAttendanceList();
+        });
+        
+        _fetchAttendanceList();
+      } else {
+        if (mounted) {
+          setState(() {
+            _checkingActiveSession = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error checking active session: $e");
+      if (mounted) {
+        setState(() {
+          _checkingActiveSession = false;
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -304,6 +347,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       final AdvertiseData advertiseData = AdvertiseData(
         serviceUuid: uuid,
         localName: 'SmartAtt_${widget.classData['code']}',
+        includeDeviceName: true,
       );
       
       await _blePeripheral.start(advertiseData: advertiseData);
@@ -346,10 +390,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       appBar: AppBar(
         title: Text(widget.classData['name']),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        key: ValueKey(_sessionStarted),
-        child: !_sessionStarted
+      body: _checkingActiveSession
+        ? const Center(child: CircularProgressIndicator())
+        : Padding(
+            padding: const EdgeInsets.all(16.0),
+            key: ValueKey(_sessionStarted),
+            child: !_sessionStarted
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -544,6 +590,13 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                   onPressed: () async {
                     _pollingTimer?.cancel();
                     await _stopBleAdvertising();
+                    if (_sessionData != null) {
+                      try {
+                        await ApiService.endSession(_sessionData!['session_id']);
+                      } catch (e) {
+                        debugPrint("Error ending session in Firestore: $e");
+                      }
+                    }
                     if (mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(

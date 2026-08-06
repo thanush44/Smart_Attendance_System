@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
 
     <!-- Bluetooth Permissions for Android 12+ -->
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
@@ -18,7 +18,7 @@
     <application
         android:label="smart_attendance"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -43,6 +43,11 @@
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <!-- Enable dynamic downloading of Google Play Services ML Kit Face Model to shrink APK size -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="face" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

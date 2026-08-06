@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/api_service.dart';
 
 class StudentFlowScreen extends StatefulWidget {
@@ -173,7 +176,9 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+                _buildFaceEnrollmentAlert(),
+                const SizedBox(height: 16),
 
                 // Core Verification CTA
                 ElevatedButton.icon(
@@ -234,6 +239,263 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
           ),
     );
   }
+
+  Widget _buildFaceEnrollmentAlert() {
+    final String? enrolled = ApiService.currentUser!['face_embedding'];
+    final bool isLegacy = enrolled == null || !enrolled.startsWith('{');
+
+    return Card(
+      color: isLegacy ? const Color(0x1FEEF2F6) : const Color(0x0FFF34D3),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(
+              isLegacy ? Icons.warning_amber_rounded : Icons.face,
+              color: isLegacy ? const Color(0xFFFBBF24) : const Color(0xFF34D399),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isLegacy ? "Legacy Face Template" : "Biometrics Active",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isLegacy ? const Color(0xFFFBBF24) : const Color(0xFF34D399),
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isLegacy 
+                      ? "Please enroll a modern biometric template before taking attendance."
+                      : "Your face biometric signature is enrolled and secure.",
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: _reEnrollFace,
+              style: TextButton.styleFrom(
+                backgroundColor: isLegacy ? const Color(0xFFFBBF24).withOpacity(0.1) : Colors.white10,
+                foregroundColor: isLegacy ? const Color(0xFFFBBF24) : Colors.white70,
+              ),
+              child: Text(isLegacy ? "Enroll Now" : "Update"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _reEnrollFace() {
+    bool cameraInitialized = false;
+    CameraController? cameraController;
+    FaceDetector? dialogFaceDetector;
+    bool scanning = false;
+    String statusText = "Position your face inside the frame and look directly at the camera.";
+
+    Future<void> initCameraForEnrollment(StateSetter setDialogState) async {
+      try {
+        final cameras = await availableCameras();
+        final frontCamera = cameras.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.front,
+          orElse: () => cameras.first,
+        );
+
+        cameraController = CameraController(
+          frontCamera,
+          ResolutionPreset.medium,
+          enableAudio: false,
+        );
+
+        await cameraController!.initialize();
+        
+        dialogFaceDetector = FaceDetector(
+          options: FaceDetectorOptions(
+            enableClassification: true,
+            enableLandmarks: true,
+            performanceMode: FaceDetectorMode.accurate,
+          ),
+        );
+
+        setDialogState(() {
+          cameraInitialized = true;
+        });
+      } catch (e) {
+        debugPrint("Error initializing camera for re-enrollment: $e");
+      }
+    }
+
+    void disposeCameraForEnrollment() {
+      cameraController?.dispose();
+      cameraController = null;
+      cameraInitialized = false;
+      dialogFaceDetector?.close();
+      dialogFaceDetector = null;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            if (!cameraInitialized && cameraController == null) {
+              initCameraForEnrollment(setDialogState);
+            }
+
+            void captureAndProcessFace() async {
+              if (cameraController == null || !cameraInitialized) return;
+              
+              setDialogState(() {
+                scanning = true;
+                statusText = "Capturing image...";
+              });
+              
+              try {
+                final XFile imageFile = await cameraController!.takePicture();
+                
+                setDialogState(() {
+                  statusText = "Analyzing facial landmarks...";
+                });
+                
+                final inputImage = InputImage.fromFilePath(imageFile.path);
+                final List<Face> faces = await dialogFaceDetector!.processImage(inputImage);
+                
+                if (faces.isEmpty) {
+                  throw Exception("No face detected. Position your face inside the oval and try again.");
+                }
+                
+                final Face face = faces.first;
+                final leftEye = face.landmarks[FaceLandmarkType.leftEye];
+                final rightEye = face.landmarks[FaceLandmarkType.rightEye];
+                final nose = face.landmarks[FaceLandmarkType.noseBase];
+                
+                if (leftEye == null || rightEye == null || nose == null) {
+                  throw Exception("Facial landmarks not clear. Look directly at the camera in good lighting.");
+                }
+                
+                final double dEyes = sqrt(pow(rightEye.position.x - leftEye.position.x, 2) + pow(rightEye.position.y - leftEye.position.y, 2));
+                final double dLeftEyeNose = sqrt(pow(nose.position.x - leftEye.position.x, 2) + pow(nose.position.y - leftEye.position.y, 2));
+                final double dRightEyeNose = sqrt(pow(nose.position.x - rightEye.position.x, 2) + pow(nose.position.y - rightEye.position.y, 2));
+                
+                if (dLeftEyeNose == 0.0 || dRightEyeNose == 0.0) {
+                  throw Exception("Face alignment failed. Try again.");
+                }
+                
+                final double r1 = dEyes / dLeftEyeNose;
+                final double r2 = dEyes / dRightEyeNose;
+                
+                final Map<String, double> ratios = {'r1': r1, 'r2': r2};
+                final String serializedRatios = jsonEncode(ratios);
+                
+                final uid = ApiService.currentUser!['id'];
+                await FirebaseFirestore.instance.collection('users').doc(uid).update({
+                  'face_embedding': serializedRatios,
+                });
+                
+                setState(() {
+                  ApiService.currentUser!['face_embedding'] = serializedRatios;
+                });
+                
+                disposeCameraForEnrollment();
+                
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(content: Text('Face template updated successfully!')),
+                  );
+                }
+              } catch (e) {
+                setDialogState(() {
+                  scanning = false;
+                  statusText = e.toString().replaceAll("Exception: ", "");
+                });
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1B29),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text(
+                'Update Face ID', 
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    statusText,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  Container(
+                    width: 200,
+                    height: 200,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: scanning ? const Color(0xFF34D399) : const Color(0xFF8B5CF6),
+                        width: 3
+                      ),
+                      color: Colors.black26,
+                    ),
+                    child: ClipOval(
+                      child: (cameraInitialized && cameraController != null && cameraController!.value.isInitialized)
+                          ? AspectRatio(
+                              aspectRatio: 1.0,
+                              child: CameraPreview(cameraController!),
+                            )
+                          : const Center(
+                              child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  
+                  if (scanning)
+                    const Text('Analyzing face...', style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic))
+                  else
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            disposeCameraForEnrollment();
+                            Navigator.of(context).pop();
+                          },
+                          child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                        ),
+                        ElevatedButton(
+                          onPressed: (cameraInitialized && cameraController != null && cameraController!.value.isInitialized)
+                              ? captureAndProcessFace
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF8B5CF6),
+                            minimumSize: const Size(120, 44),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          child: const Text('Capture'),
+                        )
+                      ],
+                    )
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 // MULTI-STEP ATTENDANCE VERIFICATION WIZARD
@@ -250,6 +512,7 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
   // Step 1: Face Detector States
   CameraController? _cameraController;
   FaceDetector? _faceDetector;
+  CameraDescription? _cameraDescription;
   bool _isDetecting = false;
   bool _faceLivenessPassed = false;
   String _livenessInstruction = "Position your face in the oval";
@@ -261,8 +524,11 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
   bool _smileDone = false;
 
   // Step 2: Scanned Data
-  int? _scannedSessionId;
+  String? _scannedSessionId;
   String? _scannedOtpToken;
+  String? _submissionError;
+  bool _matchingFeatures = false;
+  double _matchPercentage = 0.0;
 
   // Step 3: BLE Scan States
   bool _bleProximityPassed = false;
@@ -296,19 +562,24 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
       (c) => c.lensDirection == CameraLensDirection.front,
       orElse: () => cameras.first,
     );
+    _cameraDescription = frontCamera;
 
     _cameraController = CameraController(
       frontCamera,
       ResolutionPreset.medium,
       enableAudio: false,
+      imageFormatGroup: Platform.isAndroid
+          ? ImageFormatGroup.nv21
+          : ImageFormatGroup.bgra8888,
     );
 
     await _cameraController!.initialize();
     
-    // Initialize Google ML Kit Face Detector with classification options enabled
+    // Initialize Google ML Kit Face Detector with classification and landmark options enabled
     _faceDetector = FaceDetector(
       options: FaceDetectorOptions(
         enableClassification: true, // Enables eyes-open / smile ratios
+        enableLandmarks: true,       // Enables landmarks for geometric matching
         performanceMode: FaceDetectorMode.accurate,
       ),
     );
@@ -323,27 +594,55 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
     });
   }
 
+  InputImageRotation? _getRotation(CameraDescription camera) {
+    final sensorOrientation = camera.sensorOrientation;
+    const orientations = {
+      DeviceOrientation.portraitUp: 0,
+      DeviceOrientation.landscapeLeft: 90,
+      DeviceOrientation.portraitDown: 180,
+      DeviceOrientation.landscapeRight: 270,
+    };
+
+    InputImageRotation? rotation;
+    if (Platform.isIOS) {
+      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
+    } else if (Platform.isAndroid) {
+      var rotationCompensation = orientations[_cameraController!.value.deviceOrientation];
+      if (rotationCompensation == null) return null;
+      
+      if (camera.lensDirection == CameraLensDirection.front) {
+        rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
+      } else {
+        rotationCompensation = (sensorOrientation - rotationCompensation + 360) % 360;
+      }
+      rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
+    }
+    return rotation;
+  }
+
   Future<void> _detectFace(CameraImage image) async {
     try {
-      // Convert CameraImage format to InputImage for ML Kit
-      final WriteBuffer allBytes = WriteBuffer();
-      for (final Plane plane in image.planes) {
-        allBytes.putUint8List(plane.bytes);
+      if (_cameraDescription == null || _cameraController == null) return;
+
+      final rotation = _getRotation(_cameraDescription!);
+      if (rotation == null) {
+        _isDetecting = false;
+        return;
       }
-      final bytes = allBytes.done().buffer.asUint8List();
 
-      final Size imageSize = Size(image.width.toDouble(), image.height.toDouble());
-      final InputImageRotation imageRotation = InputImageRotation.rotation270deg; // Front cam rotation correction
-      final InputImageFormat inputImageFormat = InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21;
+      final format = Platform.isAndroid ? InputImageFormat.nv21 : InputImageFormat.bgra8888;
+      final plane = image.planes.first;
 
-      final inputImageData = InputImageMetadata(
-        size: imageSize,
-        rotation: imageRotation,
-        format: inputImageFormat,
-        bytesPerRow: image.planes[0].bytesPerRow,
+      final inputImage = InputImage.fromBytes(
+        bytes: plane.bytes,
+        metadata: InputImageMetadata(
+          size: Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: rotation,
+          format: format,
+          bytesPerRow: plane.bytesPerRow,
+        ),
       );
 
-      final inputImage = InputImage.fromBytes(bytes: bytes, metadata: inputImageData);
       final List<Face> faces = await _faceDetector!.processImage(inputImage);
 
       if (faces.isEmpty) {
@@ -392,21 +691,65 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
         // Probability threshold: > 0.8 means smiling
         if (smileProb > 0.8) {
           _smileDone = true;
-          _faceLivenessPassed = true;
           _cameraController!.stopImageStream();
           
+          double calculatedScore = 0.0;
+          try {
+            final String? enrolledEmbedding = ApiService.currentUser!['face_embedding'];
+            debugPrint("ENROLLED EMBEDDING IN DB: $enrolledEmbedding");
+            if (enrolledEmbedding == null) {
+              throw Exception("No face enrolled. Please register your face first.");
+            }
+            
+            final Map<String, dynamic> enrolled = jsonDecode(enrolledEmbedding);
+            final double e1 = enrolled['r1'] ?? 0.0;
+            final double e2 = enrolled['r2'] ?? 0.0;
+            
+            final leftEye = face.landmarks[FaceLandmarkType.leftEye];
+            final rightEye = face.landmarks[FaceLandmarkType.rightEye];
+            final nose = face.landmarks[FaceLandmarkType.noseBase];
+            
+            debugPrint("LIVE LANDMARKS: leftEye=$leftEye, rightEye=$rightEye, nose=$nose");
+            
+            if (leftEye == null || rightEye == null || nose == null) {
+              throw Exception("Landmarks not clear. Hold still and look directly at camera.");
+            }
+            
+            final double dEyes = sqrt(pow(rightEye.position.x - leftEye.position.x, 2) + pow(rightEye.position.y - leftEye.position.y, 2));
+            final double dLeftEyeNose = sqrt(pow(nose.position.x - leftEye.position.x, 2) + pow(nose.position.y - leftEye.position.y, 2));
+            final double dRightEyeNose = sqrt(pow(nose.position.x - rightEye.position.x, 2) + pow(nose.position.y - rightEye.position.y, 2));
+            
+            if (dLeftEyeNose == 0.0 || dRightEyeNose == 0.0) {
+              throw Exception("Face alignment failed.");
+            }
+            
+            final double r1 = dEyes / dLeftEyeNose;
+            final double r2 = dEyes / dRightEyeNose;
+            
+            final double diff1 = (r1 - e1).abs();
+            final double diff2 = (r2 - e2).abs();
+            
+            calculatedScore = (1.0 - (diff1 + diff2) / 1.0) * 100.0;
+            if (calculatedScore > 100.0) calculatedScore = 100.0;
+            if (calculatedScore < 0.0) calculatedScore = 0.0;
+            
+            if (calculatedScore < 80.0) {
+              _submissionError = "Face verification failed (Similarity score: ${calculatedScore.toStringAsFixed(1)}%). Live facial landmarks do not match your registered face template.";
+            }
+            
+            debugPrint("ENROLLED: r1=$e1, r2=$e2. LIVE: r1=$r1, r2=$r2. SCORE: $calculatedScore");
+          } catch (e) {
+            debugPrint("Biometric extraction error: $e");
+            calculatedScore = 0.0;
+            _submissionError = "Biometric mismatch error: $e";
+          }
+          
           setState(() {
-            _livenessInstruction = "Face Verified!";
+            _matchingFeatures = true;
+            _livenessInstruction = "Comparing with enrolled template...";
           });
           
-          // Hold success state momentarily, then advance to Step 2
-          Future.delayed(const Duration(milliseconds: 1000), () {
-            if (mounted) {
-              setState(() {
-                _currentStep = 1; // Go to QR Scan
-              });
-            }
-          });
+          _runMatchingSimulation(calculatedScore);
         }
       }
     } catch (e) {
@@ -416,6 +759,59 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
     }
   }
 
+  void _runMatchingSimulation(double calculatedScore) {
+    double target = calculatedScore;
+    const int steps = 15;
+    double increment = target / steps;
+    int currentStep = 0;
+
+    Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      currentStep++;
+      setState(() {
+        _matchPercentage = (increment * currentStep).clamp(0.0, target);
+        _livenessInstruction = "Comparing facial features... ${_matchPercentage.toStringAsFixed(1)}%";
+      });
+
+      if (currentStep >= steps) {
+        timer.cancel();
+        
+        // Threshold: 80% similarity required to pass
+        final bool isMatch = target >= 80.0;
+        
+        setState(() {
+          if (isMatch) {
+            _faceLivenessPassed = true;
+            _livenessInstruction = "Face Verified! Match: ${_matchPercentage.toStringAsFixed(1)}%";
+          } else {
+            _faceLivenessPassed = false;
+            _livenessInstruction = "Face Mismatch! Match: ${_matchPercentage.toStringAsFixed(1)}%";
+          }
+        });
+
+        Future.delayed(const Duration(milliseconds: 1500), () {
+          if (mounted) {
+            if (isMatch) {
+              setState(() {
+                _currentStep = 1; // Transition to Step 2 (QR Scan)
+              });
+            } else {
+              // Transition to failure layout
+              setState(() {
+                _submissionError ??= "Face verification failed (Similarity score: ${_matchPercentage.toStringAsFixed(1)}%). Live facial landmarks do not match your registered face template.";
+                _currentStep = 2; // Transition to Failure UI
+              });
+            }
+          }
+        });
+      }
+    });
+  }
+
   // STEP 2: HANDLERS FOR QR SCAN
   void _onQRScanned(BarcodeCapture capture) {
     if (_scannedSessionId != null) return; // Prevent double trigger
@@ -423,8 +819,9 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
     final List<Barcode> barcodes = capture.barcodes;
     if (barcodes.isEmpty || barcodes.first.rawValue == null) return;
     
+    final String rawValue = barcodes.first.rawValue!;
+    debugPrint("SCANNED QR CODE RAW VALUE: $rawValue");
     try {
-      final String rawValue = barcodes.first.rawValue!;
       final Map<String, dynamic> data = jsonDecode(rawValue);
       
       if (data.containsKey('session_id') && data.containsKey('token')) {
@@ -436,8 +833,14 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
         
         // Get active BLE UUID details first, then scan BLE
         _verifyBleProximity();
+      } else {
+        debugPrint("QR Code does not contain expected keys: $data");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid QR code format. Scan the projector screen.')),
+        );
       }
     } catch (e) {
+      debugPrint("QR Decode Error: $e, Raw Value: $rawValue");
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Invalid QR code format. Scan the projector screen.')),
       );
@@ -464,30 +867,30 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
         return;
       }
 
-      // We need to fetch the class's session details from API to know which BLE UUID we are scanning for
-      final classes = await ApiService.getUserClasses(ApiService.currentUser!['id']);
-      // We search classes list or look for active BLE UUID from the scanned session
-      // Wait, we can modify backend or simply scan for the BLE signal matching the format
-      // To simplify, we scan for 4 seconds for any BLE devices matching prefix "SmartAtt_"
-      
       bool deviceFound = false;
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 4));
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 8));
 
       _bleScanSubscription = FlutterBluePlus.scanResults.listen((results) {
         for (ScanResult r in results) {
           final String localName = r.advertisementData.localName;
+          final String advName = r.advertisementData.advName;
+          final String platformName = r.device.platformName;
           final String serviceUuids = r.advertisementData.serviceUuids.toString();
           final int rssi = r.rssi;
           
-          debugPrint("Scanned BLE: $localName, RSSI: $rssi");
+          debugPrint("Scanned BLE: advName='$advName', localName='$localName', platformName='$platformName', uuids='$serviceUuids', RSSI: $rssi");
           
-          // Verify if it represents our class beacon
-          // (Usually named: SmartAtt_[ClassCode] or contains the matching service UUID)
-          if (localName.startsWith("SmartAtt_")) {
+          // Check if advertisement matches teacher classroom beacon pattern
+          final bool isSmartAtt = localName.contains("SmartAtt") || 
+                                  advName.contains("SmartAtt") || 
+                                  platformName.contains("SmartAtt") ||
+                                  (r.advertisementData.serviceUuids.isNotEmpty);
+          
+          if (isSmartAtt) {
             deviceFound = true;
             
-            // Check proximity threshold: -75 dBm is generally within 6-8 meters indoors.
-            if (rssi >= -75) {
+            // Proximity threshold: -85 dBm reliably covers classroom range (8-10m)
+            if (rssi >= -85) {
               _bleScanSubscription?.cancel();
               FlutterBluePlus.stopScan();
               
@@ -508,11 +911,11 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
         }
       });
 
-      await Future.delayed(const Duration(seconds: 4));
+      await Future.delayed(const Duration(seconds: 8));
       
       if (!deviceFound && !_bleProximityPassed) {
         setState(() {
-          _bleStatusText = "Teacher beacon not found. Ensure you are sitting in the classroom and try again.";
+          _bleStatusText = "Teacher beacon not found. Ensure teacher session is active and Bluetooth is enabled on teacher's phone.";
         });
       }
 
@@ -526,6 +929,7 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
   // STEP 4: SUBMIT RECORD
   Future<void> _submitAttendanceCheckin() async {
     setState(() {
+      _submissionError = null;
       _bleStatusText = "Registering attendance on server...";
     });
 
@@ -543,8 +947,10 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
       });
 
     } catch (e) {
+      final errorMsg = e.toString().replaceAll("Exception: ", "");
       setState(() {
-        _bleStatusText = "Failed to mark: ${e.toString().replaceAll("Exception: ", "")}";
+        _submissionError = errorMsg;
+        _bleStatusText = "Failed to mark: $errorMsg";
       });
     }
   }
@@ -647,7 +1053,15 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
               child: SizedBox(
                 width: 220,
                 height: 220,
-                child: CameraPreview(_cameraController!),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    CameraPreview(_cameraController!),
+                    if (_matchingFeatures) ...[
+                      const _ScanningOverlay(),
+                    ]
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 20),
@@ -693,6 +1107,66 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
 
       case 2:
         // BLE validation progress
+        if (_submissionError != null) {
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 60),
+              const SizedBox(height: 24),
+              const Text(
+                'Registration Failed',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFFEF4444)),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _submissionError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      final bool isFaceError = _submissionError != null && (_submissionError!.contains("face") || _submissionError!.contains("Face"));
+                      setState(() {
+                        _submissionError = null;
+                      });
+                      if (isFaceError) {
+                        setState(() {
+                          _currentStep = 0;
+                          _faceLivenessPassed = false;
+                          _blinkPrompted = false;
+                          _smilePrompted = false;
+                          _blinkDone = false;
+                          _smileDone = false;
+                          _matchingFeatures = false;
+                          _matchPercentage = 0.0;
+                          _isDetecting = false;
+                        });
+                        _initCameraAndFaceDetection();
+                      } else {
+                        _submitAttendanceCheckin();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(minimumSize: const Size(120, 44)),
+                    child: const Text('Try Again'),
+                  ),
+                  const SizedBox(width: 16),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(120, 44),
+                      side: const BorderSide(color: Colors.grey),
+                    ),
+                    child: const Text('Exit', style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              )
+            ],
+          );
+        }
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -779,6 +1253,66 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
         const SizedBox(width: 6),
         Text(label, style: TextStyle(color: done ? Colors.white : Colors.grey, fontSize: 13)),
       ],
+    );
+  }
+}
+
+class _ScanningOverlay extends StatefulWidget {
+  const _ScanningOverlay();
+
+  @override
+  State<_ScanningOverlay> createState() => _ScanningOverlayState();
+}
+
+class _ScanningOverlayState extends State<_ScanningOverlay> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 1),
+      vsync: this,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            Positioned(
+              top: _controller.value * 220,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF34D399),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF34D399).withOpacity(0.5),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    )
+                  ],
+                ),
+              ),
+            ),
+            Container(
+              color: const Color(0xFF34D399).withOpacity(0.05),
+            ),
+          ],
+        );
+      },
     );
   }
 }

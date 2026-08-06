@@ -216,6 +216,30 @@ class ApiService {
     };
   }
 
+  // Get active session for a specific class (if any exists)
+  static Future<Map<String, dynamic>?> getActiveSession(String classId) async {
+    final query = await FirebaseFirestore.instance
+        .collection('sessions')
+        .where('class_id', isEqualTo: classId)
+        .where('is_active', isEqualTo: true)
+        .limit(1)
+        .get();
+
+    if (query.docs.isEmpty) return null;
+
+    final doc = query.docs.first;
+    final data = doc.data();
+    return {
+      'session_id': doc.id,
+      'short_id': data['short_id'],
+      'class_id': data['class_id'],
+      'class_name': data['class_name'],
+      'ble_uuid': data['ble_uuid'],
+      'otp_secret': data['otp_secret'],
+      'is_active': data['is_active'],
+    };
+  }
+
   // Submit attendance check-in (Student)
   static Future<Map<String, dynamic>> submitAttendance({
     required dynamic sessionId,
@@ -318,6 +342,14 @@ class ApiService {
       }
       return data;
     }).toList();
+  }
+
+  // Close an active attendance session
+  static Future<void> endSession(String sessionId) async {
+    await FirebaseFirestore.instance.collection('sessions').doc(sessionId).update({
+      'is_active': false,
+      'end_time': FieldValue.serverTimestamp(),
+    });
   }
 
   // --- CRYPTO HELPERS FOR OFFLINE MOCK SIGNALS ---
