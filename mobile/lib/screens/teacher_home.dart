@@ -116,6 +116,46 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
     return advertiseGranted && connectGranted;
   }
 
+  void _showClassOptions(Map<String, dynamic> classData) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1B29),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.play_circle_fill, color: Color(0xFF34D399)),
+                title: const Text('Start/Manage Session'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _openClassSession(classData);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.history, color: Color(0xFF8B5CF6)),
+                title: const Text('View Attendance History'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ClassAttendanceHistoryScreen(classData: classData),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // Navigate to Class Active Session control screen
   void _openClassSession(Map<String, dynamic> classData) async {
     bool permissionsGranted = await _requestBlePermissions();
@@ -231,8 +271,8 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
                               contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                               title: Text(c['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
                               subtitle: Text(c['code'], style: const TextStyle(color: Color(0xFF8B5CF6), fontWeight: FontWeight.w600)),
-                              trailing: const Icon(Icons.play_circle_fill, color: Color(0xFF8B5CF6), size: 32),
-                              onTap: () => _openClassSession(c),
+                              trailing: const Icon(Icons.more_vert, color: Colors.grey, size: 24),
+                              onTap: () => _showClassOptions(c),
                             ),
                           );
                         },
@@ -610,6 +650,82 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
               ],
             ),
       ),
+    );
+  }
+}
+
+class ClassAttendanceHistoryScreen extends StatefulWidget {
+  final Map<String, dynamic> classData;
+  const ClassAttendanceHistoryScreen({super.key, required this.classData});
+
+  @override
+  State<ClassAttendanceHistoryScreen> createState() => _ClassAttendanceHistoryScreenState();
+}
+
+class _ClassAttendanceHistoryScreenState extends State<ClassAttendanceHistoryScreen> {
+  List<dynamic> _history = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchHistory();
+  }
+
+  Future<void> _fetchHistory() async {
+    try {
+      final history = await ApiService.getClassAttendanceHistory(widget.classData['id']);
+      if (mounted) {
+        setState(() {
+          _history = history;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching history: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load history: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${widget.classData['code']} History'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _history.isEmpty
+              ? const Center(
+                  child: Text('No attendance records found.', style: TextStyle(color: Colors.grey)),
+                )
+              : ListView.builder(
+                  itemCount: _history.length,
+                  itemBuilder: (context, index) {
+                    final record = _history[index];
+                    final dateStr = record['timestamp'] != null 
+                        ? record['timestamp'].toString().substring(0, 16).replaceFirst('T', ' ')
+                        : 'Unknown Date';
+                    
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      color: Colors.white.withOpacity(0.02),
+                      child: ListTile(
+                        title: Text(record['student_name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('${record['student_username'] ?? ''}\n$dateStr', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        isThreeLine: true,
+                        trailing: const Icon(Icons.check_circle, color: Color(0xFF34D399)),
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }

@@ -312,6 +312,7 @@ class ApiService {
     // 5. Save attendance record
     final log = {
       'session_id': sessionDocId,
+      'class_id': classId,
       'student_id': uid,
       'student_name': currentUser!['name'],
       'student_username': currentUser!['username'],
@@ -337,6 +338,23 @@ class ApiService {
     return query.docs.map((doc) {
       final data = doc.data() as Map<String, dynamic>;
       // Map Server Timestamps to string logic for compatibility
+      if (data['timestamp'] is Timestamp) {
+        data['timestamp'] = (data['timestamp'] as Timestamp).toDate().toIso8601String();
+      }
+      return data;
+    }).toList();
+  }
+
+  // Fetch class attendance history (Teacher)
+  static Future<List<dynamic>> getClassAttendanceHistory(String classId) async {
+    final query = await FirebaseFirestore.instance
+        .collection('attendance')
+        .where('class_id', isEqualTo: classId)
+        .orderBy('timestamp', descending: true)
+        .get();
+
+    return query.docs.map((doc) {
+      final data = doc.data() as Map<String, dynamic>;
       if (data['timestamp'] is Timestamp) {
         data['timestamp'] = (data['timestamp'] as Timestamp).toDate().toIso8601String();
       }

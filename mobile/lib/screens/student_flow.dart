@@ -519,9 +519,7 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
   
   // Liveness validation checks
   bool _blinkPrompted = false;
-  bool _smilePrompted = false;
   bool _blinkDone = false;
-  bool _smileDone = false;
 
   // Step 2: Scanned Data
   String? _scannedSessionId;
@@ -663,7 +661,7 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
       }
 
       // Step-by-Step Liveness checks
-      if (!_blinkPrompted && !_smilePrompted) {
+      if (!_blinkPrompted) {
         // Step 1: Prompt blink
         setState(() {
           _blinkPrompted = true;
@@ -678,19 +676,6 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
         // Probability threshold: < 0.2 means closed
         if (leftEye < 0.2 && rightEye < 0.2) {
           _blinkDone = true;
-          setState(() {
-            _smilePrompted = true;
-            _livenessInstruction = "Now: Smile big for the camera!";
-          });
-        }
-      }
-
-      if (_smilePrompted && !_smileDone) {
-        double smileProb = face.smilingProbability ?? 0.0;
-        
-        // Probability threshold: > 0.8 means smiling
-        if (smileProb > 0.8) {
-          _smileDone = true;
           _cameraController!.stopImageStream();
           
           double calculatedScore = 0.0;
@@ -826,8 +811,8 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
       
       if (data.containsKey('session_id') && data.containsKey('token')) {
         setState(() {
-          _scannedSessionId = data['session_id'];
-          _scannedOtpToken = data['token'];
+          _scannedSessionId = data['session_id'].toString();
+          _scannedOtpToken = data['token'].toString();
           _currentStep = 2; // Transition to BLE Verification
         });
         
@@ -1071,8 +1056,6 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _checkIndicator('Eyes Blink', _blinkDone),
-                const SizedBox(width: 24),
-                _checkIndicator('Smile Ratio', _smileDone),
               ],
             )
           ],
@@ -1138,9 +1121,7 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
                           _currentStep = 0;
                           _faceLivenessPassed = false;
                           _blinkPrompted = false;
-                          _smilePrompted = false;
                           _blinkDone = false;
-                          _smileDone = false;
                           _matchingFeatures = false;
                           _matchPercentage = 0.0;
                           _isDetecting = false;
