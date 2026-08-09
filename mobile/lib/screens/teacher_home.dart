@@ -303,11 +303,58 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   Timer? _pollingTimer;
   bool _isAdvertising = false;
   bool _checkingActiveSession = true;
+  StreamSubscription<PeripheralState>? _bleStateSubscription;
+  String? _bleError;
 
   @override
   void initState() {
     super.initState();
     _checkActiveSession();
+    _listenToBleState();
+  }
+
+  void _listenToBleState() {
+    try {
+      _bleStateSubscription = _blePeripheral.onPeripheralStateChanged?.listen((state) {
+        if (!mounted) return;
+        debugPrint("BLE state changed: $state");
+        setState(() {
+          _isAdvertising = (state == PeripheralState.advertising);
+          switch (state) {
+            case PeripheralState.poweredOff:
+              _bleError = "Bluetooth is turned off on your device.";
+              break;
+            case PeripheralState.unsupported:
+              _bleError = "BLE Advertising is not supported on this device.";
+              break;
+            case PeripheralState.unauthorized:
+              _bleError = "Bluetooth permissions are not authorized.";
+              break;
+            default:
+              _bleError = null;
+          }
+        });
+      });
+    } catch (e) {
+      debugPrint("Error listening to BLE state: $e");
+    }
+  }
+
+  Future<bool> _requestBlePermissions() async {
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetoothAdvertise,
+      Permission.bluetoothConnect,
+      Permission.location,
+    ].request();
+
+    statuses.forEach((permission, status) {
+      print("BLE Permission: $permission => $status");
+    });
+
+    final advertiseGranted = statuses[Permission.bluetoothAdvertise]?.isGranted ?? false;
+    final connectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? false;
+
+    return advertiseGranted && connectGranted;
   }
 
   Future<void> _checkActiveSession() async {
@@ -320,8 +367,16 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
           _checkingActiveSession = false;
         });
 
-        // Start BLE Peripheral Advertising
-        await _startBleAdvertising(activeSession['ble_uuid']);
+        // Request BLE permissions first
+        final permissionsGranted = await _requestBlePermissions();
+        if (permissionsGranted) {
+          // Start BLE Peripheral Advertising
+          await _startBleAdvertising(activeSession['ble_uuid']);
+        } else {
+          setState(() {
+            _bleError = "Bluetooth permissions are required to advertise.";
+          });
+        }
 
         // Poll attendance list periodically (every 3 seconds)
         _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
@@ -349,6 +404,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _bleStateSubscription?.cancel();
     _stopBleAdvertising();
     super.dispose();
   }
@@ -364,8 +420,15 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
         _sessionStarted = true;
       });
 
-      // 2. Start BLE Peripheral Advertising
-      await _startBleAdvertising(data['ble_uuid']);
+      // 2. Request permissions and start BLE Peripheral Advertising
+      final permissionsGranted = await _requestBlePermissions();
+      if (permissionsGranted) {
+        await _startBleAdvertising(data['ble_uuid']);
+      } else {
+        setState(() {
+          _bleError = "Bluetooth permissions are required to advertise.";
+        });
+      }
 
       // 3. Poll attendance list periodically (every 3 seconds)
       _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
@@ -391,9 +454,15 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       );
       
       await _blePeripheral.start(advertiseData: advertiseData);
-      setState(() => _isAdvertising = true);
+      setState(() {
+        _isAdvertising = true;
+        _bleError = null;
+      });
     } catch (e) {
       debugPrint("BLE Advertising Error: $e");
+      setState(() {
+        _bleError = "Failed to start BLE advertising: ${e.toString().replaceAll("Exception: ", "")}";
+      });
     }
   }
 
@@ -464,98 +533,113 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // BLE Beacon Active Card
-                Card(
-                  color: const Color(0xFF1E1B29),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              _isAdvertising ? Icons.sensors : Icons.sensors_off,
-                              color: _isAdvertising ? const Color(0xFF34D399) : Colors.red,
-                              size: 28,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
+                GestureDetector(
+                  onTap: _isAdvertising ? null : () async {
+                    if (_sessionData != null) {
+                      final permissionsGranted = await _requestBlePermissions();
+                      if (permissionsGranted) {
+                        await _startBleAdvertising(_sessionData!['ble_uuid']);
+                      }
+                    }
+                  },
+                  child: Card(
+                    color: const Color(0xFF1E1B29),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _isAdvertising ? Icons.sensors : Icons.sensors_off,
+                                color: _isAdvertising ? const Color(0xFF34D399) : Colors.red,
+                                size: 28,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _isAdvertising ? 'Broadcasting BLE Beacon' : 'BLE Beacon Suspended',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: _isAdvertising ? const Color(0xFF34D399) : Colors.red,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _isAdvertising 
+                                          ? 'Proximity check is active.' 
+                                          : (_bleError ?? 'Bluetooth advertising is inactive. Tap to retry.'),
+                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 24, color: Color(0xFF2E2A3A)),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  const Text('Projector Session PIN (Short):', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                  const SizedBox(height: 4),
                                   Text(
-                                    _isAdvertising ? 'Broadcasting BLE Beacon' : 'BLE Beacon Suspended',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: _isAdvertising ? const Color(0xFF34D399) : Colors.red,
-                                    ),
+                                    '${_sessionData!['short_id'] ?? 'N/A'}',
+                                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF34D399), letterSpacing: 1),
                                   ),
-                                  const SizedBox(height: 2),
-                                  const Text('Proximity check is active.', style: TextStyle(fontSize: 11, color: Colors.grey)),
                                 ],
                               ),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 24, color: Color(0xFF2E2A3A)),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Projector Session PIN (Short):', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${_sessionData!['short_id'] ?? 'N/A'}',
-                                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Color(0xFF34D399), letterSpacing: 1),
-                                ),
-                              ],
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.copy, color: Color(0xFF8B5CF6)),
-                              tooltip: 'Copy Session PIN',
-                              onPressed: () {
-                                final pin = _sessionData!['short_id'] ?? '';
-                                Clipboard.setData(ClipboardData(text: pin));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Session PIN copied to clipboard!')),
-                                );
-                              },
-                            )
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Full Session ID:', style: TextStyle(fontSize: 11, color: Colors.grey)),
-                            Row(
-                              children: [
-                                Text(
-                                  '${_sessionData!['session_id']}',
-                                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
-                                ),
-                                const SizedBox(width: 6),
-                                GestureDetector(
-                                  onTap: () {
-                                    Clipboard.setData(ClipboardData(text: _sessionData!['session_id']));
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Full Session ID copied!')),
-                                    );
-                                  },
-                                  child: const Icon(Icons.copy, size: 12, color: Colors.grey),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Open the Web Dashboard on the projector and enter the Session PIN above to display the rolling QR code.',
-                          style: TextStyle(fontSize: 11, color: Colors.grey),
-                          textAlign: TextAlign.center,
-                        )
-                      ],
+                              IconButton(
+                                icon: const Icon(Icons.copy, color: Color(0xFF8B5CF6)),
+                                tooltip: 'Copy Session PIN',
+                                onPressed: () {
+                                  final pin = _sessionData!['short_id'] ?? '';
+                                  Clipboard.setData(ClipboardData(text: pin));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Session PIN copied to clipboard!')),
+                                  );
+                                },
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Full Session ID:', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                              Row(
+                                children: [
+                                  Text(
+                                    '${_sessionData!['session_id']}',
+                                    style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  GestureDetector(
+                                    onTap: () {
+                                      Clipboard.setData(ClipboardData(text: _sessionData!['session_id']));
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Full Session ID copied!')),
+                                      );
+                                    },
+                                    child: const Icon(Icons.copy, size: 12, color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Open the Web Dashboard on the projector and enter the Session PIN above to display the rolling QR code.',
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          )
+                        ],
+                      ),
                     ),
                   ),
                 ),

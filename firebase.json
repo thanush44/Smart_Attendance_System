@@ -1,11 +1,17 @@
 {
   "hosting": {
-    "site": "smart-attendace-45704",
+    "site": "smart-attendence-16c63",
     "public": "web",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ]
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
   }
 }
+

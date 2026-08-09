@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dart_dash_otp/dart_dash_otp.dart';
@@ -255,7 +256,9 @@ class ApiService {
 
     // 1. Fetch Session from Firestore
     final doc = await FirebaseFirestore.instance.collection('sessions').doc(sessionDocId).get();
-    if (!doc.exists) throw Exception('Attendance session not found.');
+    if (!doc.exists) {
+      throw Exception('Attendance session not found (Project: ${Firebase.app().options.projectId}).');
+    }
     final sessionData = doc.data() as Map<String, dynamic>;
 
     if (sessionData['is_active'] != true) {

@@ -2,13 +2,13 @@
 // TODO: Replace this placeholder config with your actual Firebase Web Config keys.
 // You can get this by going to Firebase Console > Project Settings > Web App (Add App).
 const firebaseConfig = {
-    apiKey: "AIzaSyC7PgwfRKMb4pLNX6xjhNvceMFedK6xQEw",
-    authDomain: "smart-attendace-45704.firebaseapp.com",
-    projectId: "smart-attendace-45704",
-    storageBucket: "smart-attendace-45704.firebasestorage.app",
-    messagingSenderId: "942462685842",
-    appId: "1:942462685842:web:7291fb17ec67164e1e4c4b",
-    measurementId: "G-EX1001XXCC"
+    apiKey: "AIzaSyA7Ic4y9MRfTymEY5uoZmgHmvKwuoaSDa4",
+    authDomain: "smart-attendence-16c63.firebaseapp.com",
+    projectId: "smart-attendence-16c63",
+    storageBucket: "smart-attendence-16c63.firebasestorage.app",
+    messagingSenderId: "5109015283",
+    appId: "1:5109015283:web:cd24045fcc912956154d86",
+    measurementId: "G-8K4ZWV7BM6"
 };
 
 // Initialize Firebase compatibility SDKs
