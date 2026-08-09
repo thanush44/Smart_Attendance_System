@@ -1,0 +1,12 @@
+# Build APK Output Folder
+build_apks/
+*.apk
+
+# Environment & Logs
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# Node modules
+node_modules/

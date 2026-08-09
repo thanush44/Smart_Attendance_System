@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/api_service.dart';
 
 class TeacherHomeScreen extends StatefulWidget {
@@ -26,15 +30,17 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
     setState(() => _isLoading = true);
     try {
       final classes = await ApiService.getUserClasses(ApiService.currentUser!['id']);
-      print("TeacherHomeScreen _fetchClasses loaded: $classes");
+      debugPrint("TeacherHomeScreen _fetchClasses loaded: $classes");
+      if (!mounted) return;
       setState(() {
         _classes = classes;
         _isLoading = false;
       });
     } catch (e, stack) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
-      print("TeacherHomeScreen _fetchClasses Error: $e");
-      print("TeacherHomeScreen Stack trace: $stack");
+      debugPrint("TeacherHomeScreen _fetchClasses Error: $e");
+      debugPrint("TeacherHomeScreen Stack trace: $stack");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error loading classes: $e')),
       );
@@ -84,6 +90,7 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
                   if (context.mounted) Navigator.pop(context);
                   _fetchClasses();
                 } catch (e) {
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Failed: $e')),
                   );
@@ -211,7 +218,7 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
                       children: [
                         CircleAvatar(
                           radius: 28,
-                          backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                          backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                           child: const Icon(Icons.person, size: 30, color: Color(0xFF8B5CF6)),
                         ),
                         const SizedBox(width: 16),
@@ -257,7 +264,7 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.class_outlined, size: 60, color: Colors.white.withOpacity(0.2)),
+                            Icon(Icons.class_outlined, size: 60, color: Colors.white.withValues(alpha: 0.2)),
                             const SizedBox(height: 10),
                             const Text('No courses created yet.', style: TextStyle(color: Colors.grey)),
                           ],
@@ -441,6 +448,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
       _fetchAttendanceList();
 
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to initiate class session: $e')),
       );
@@ -514,11 +522,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.sensors, size: 80, color: const Color(0xFF8B5CF6).withOpacity(0.5)),
+                  Icon(Icons.sensors, size: 80, color: const Color(0xFF8B5CF6).withValues(alpha: 0.5)),
                   const SizedBox(height: 16),
                   Text(
                     'Ready to Start Attendance',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: theme.colorScheme.onBackground),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface),
                   ),
                   const SizedBox(height: 8),
                   const Text(
@@ -658,9 +666,9 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF34D399).withOpacity(0.1),
+                        color: const Color(0xFF34D399).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF34D399).withOpacity(0.3))
+                        border: Border.all(color: const Color(0xFF34D399).withValues(alpha: 0.3))
                       ),
                       child: Text(
                         '${_checkins.length} Present',
@@ -674,13 +682,13 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                 // Attendance List
                 Expanded(
                   child: _checkins.isEmpty
-                    ? Center(
+                    ? const Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.people_outline, size: 40, color: Colors.grey),
-                            const SizedBox(height: 8),
-                            const Text('No check-ins yet. Waiting for students...', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                            Icon(Icons.people_outline, size: 40, color: Colors.grey),
+                            SizedBox(height: 8),
+                            Text('No check-ins yet. Waiting for students...', style: TextStyle(color: Colors.grey, fontSize: 13)),
                           ],
                         ),
                       )
@@ -690,7 +698,7 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                           final c = _checkins[index];
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
-                            color: Colors.white.withOpacity(0.02),
+                            color: Colors.white.withValues(alpha: 0.02),
                             child: ListTile(
                               dense: true,
                               title: Text(c['student_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -726,12 +734,11 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
                         debugPrint("Error ending session in Firestore: $e");
                       }
                     }
-                    if (mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Attendance session completed successfully.')),
-                      );
-                    }
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Attendance session completed successfully.')),
+                    );
                   },
                   style: ElevatedButton.styleFrom(backgroundColor: theme.colorScheme.error),
                   child: const Text('Close Attendance Session'),
@@ -752,69 +759,746 @@ class ClassAttendanceHistoryScreen extends StatefulWidget {
 }
 
 class _ClassAttendanceHistoryScreenState extends State<ClassAttendanceHistoryScreen> {
-  List<dynamic> _history = [];
   bool _isLoading = true;
+  String _searchQuery = '';
+  int _selectedTabIndex = 0; // 0: Sessions View, 1: Student Roster View
+
+  List<Map<String, dynamic>> _enrolledStudents = [];
+  List<Map<String, dynamic>> _sessions = [];
+  List<Map<String, dynamic>> _attendanceLogs = [];
+
+  List<Map<String, dynamic>> _sessionGroups = [];
+  List<Map<String, dynamic>> _studentStats = [];
+
+  int _totalSessionsCount = 0;
+  int _totalEnrolledCount = 0;
+  double _overallAttendancePercentage = 0.0;
+  int _atRiskStudentsCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _fetchHistory();
+    _fetchData();
   }
 
-  Future<void> _fetchHistory() async {
+  Future<void> _fetchData() async {
     try {
-      final history = await ApiService.getClassAttendanceHistory(widget.classData['id']);
-      if (mounted) {
-        setState(() {
-          _history = history;
-          _isLoading = false;
-        });
-      }
+      final payload = await ApiService.getClassAnalyticsData(widget.classData['id']);
+      if (!mounted) return;
+
+      setState(() {
+        _enrolledStudents = List<Map<String, dynamic>>.from(payload['enrolled_students']);
+        _sessions = List<Map<String, dynamic>>.from(payload['sessions']);
+        _attendanceLogs = List<Map<String, dynamic>>.from(payload['attendance_logs']);
+        
+        _processAnalyticsData();
+        _isLoading = false;
+      });
     } catch (e) {
-      debugPrint("Error fetching history: $e");
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load history: $e')),
-        );
+      debugPrint("Error loading class analytics data: $e");
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load class analytics: $e')),
+      );
+    }
+  }
+
+  void _processAnalyticsData() {
+    _totalEnrolledCount = _enrolledStudents.length;
+
+    // Build unique sessions map from sessions collection + logs fallback
+    Map<String, Map<String, dynamic>> sessionsMap = {};
+
+    for (var s in _sessions) {
+      final String sid = s['id'].toString();
+      sessionsMap[sid] = {
+        'session_id': sid,
+        'short_id': s['short_id'] ?? sid.substring(0, min(6, sid.length)),
+        'start_time_iso': s['start_time_iso'] ?? '',
+        'is_active': s['is_active'] ?? false,
+      };
+    }
+
+    // Collect sessions from logs if any exist outside explicit session docs
+    for (var log in _attendanceLogs) {
+      final String sid = (log['session_id'] ?? '').toString();
+      if (sid.isNotEmpty && !sessionsMap.containsKey(sid)) {
+        sessionsMap[sid] = {
+          'session_id': sid,
+          'short_id': sid.length > 6 ? sid.substring(0, 6) : sid,
+          'start_time_iso': log['timestamp'] ?? '',
+          'is_active': false,
+        };
       }
+    }
+
+    final List<Map<String, dynamic>> sessionList = sessionsMap.values.toList();
+    sessionList.sort((a, b) => (b['start_time_iso'] ?? '').compareTo(a['start_time_iso'] ?? ''));
+    _totalSessionsCount = sessionList.length;
+
+    // Group logs by session_id
+    Map<String, List<Map<String, dynamic>>> logsBySession = {};
+    for (var log in _attendanceLogs) {
+      final String sid = (log['session_id'] ?? '').toString();
+      logsBySession.putIfAbsent(sid, () => []).add(log);
+    }
+
+    // 1. Build Session-Wise Roster Groups
+    _sessionGroups = [];
+    int grandTotalPresentLogs = 0;
+
+    for (var s in sessionList) {
+      final String sid = s['session_id'];
+      final List<Map<String, dynamic>> logsForSession = logsBySession[sid] ?? [];
+
+      // Set of student IDs present in this session
+      Set<String> presentStudentIds = {};
+      List<Map<String, dynamic>> presentRoster = [];
+
+      for (var log in logsForSession) {
+        final String stId = (log['student_id'] ?? '').toString();
+        if (stId.isNotEmpty) {
+          presentStudentIds.add(stId);
+          presentRoster.add({
+            'student_id': stId,
+            'student_name': log['student_name'] ?? 'Student',
+            'student_username': log['student_username'] ?? stId,
+            'timestamp': log['timestamp'] ?? '',
+            'verified_face': log['verified_face'] ?? true,
+            'verified_proximity': log['verified_proximity'] ?? true,
+          });
+        }
+      }
+
+      grandTotalPresentLogs += presentRoster.length;
+
+      // Identify absent students from enrolled list
+      List<Map<String, dynamic>> absentRoster = [];
+      for (var st in _enrolledStudents) {
+        final String stId = st['id'].toString();
+        if (!presentStudentIds.contains(stId)) {
+          absentRoster.add(st);
+        }
+      }
+
+      double sessionPct = _totalEnrolledCount > 0 
+          ? (presentRoster.length / _totalEnrolledCount) * 100.0 
+          : 0.0;
+
+      String dateFormatted = 'Session Log';
+      if (s['start_time_iso'] != null && s['start_time_iso'].toString().contains('T')) {
+        final parts = s['start_time_iso'].toString().split('T');
+        final timePart = parts[1].length >= 5 ? parts[1].substring(0, 5) : parts[1];
+        dateFormatted = '${parts[0]} at $timePart';
+      }
+
+      _sessionGroups.add({
+        'session_id': sid,
+        'short_id': s['short_id'],
+        'date_str': dateFormatted,
+        'present_roster': presentRoster,
+        'absent_roster': absentRoster,
+        'percentage': sessionPct,
+      });
+    }
+
+    // 2. Build Student-Wise Analytics Roster
+    Map<String, int> studentPresentCounts = {};
+    for (var log in _attendanceLogs) {
+      final String stId = (log['student_id'] ?? '').toString();
+      if (stId.isNotEmpty) {
+        studentPresentCounts[stId] = (studentPresentCounts[stId] ?? 0) + 1;
+      }
+    }
+
+    _studentStats = [];
+    _atRiskStudentsCount = 0;
+
+    for (var st in _enrolledStudents) {
+      final String stId = st['id'].toString();
+      final int attended = studentPresentCounts[stId] ?? 0;
+      final int maxPossible = _totalSessionsCount;
+      final double rate = maxPossible > 0 ? (attended / maxPossible) * 100.0 : 100.0;
+
+      final bool isAtRisk = maxPossible > 0 && rate < 75.0;
+      if (isAtRisk) _atRiskStudentsCount++;
+
+      _studentStats.add({
+        'id': stId,
+        'name': st['name'] ?? 'Student',
+        'username': st['username'] ?? stId,
+        'attended_count': attended,
+        'total_sessions': maxPossible,
+        'percentage': rate,
+        'is_at_risk': isAtRisk,
+      });
+    }
+
+    // Overall class attendance rate calculation
+    final int possibleTotalCheckins = _totalSessionsCount * _totalEnrolledCount;
+    _overallAttendancePercentage = possibleTotalCheckins > 0
+        ? (grandTotalPresentLogs / possibleTotalCheckins) * 100.0
+        : 0.0;
+  }
+
+  Future<void> _exportCsvReport() async {
+    try {
+      final buffer = StringBuffer();
+      final String className = widget.classData['name'] ?? 'Course';
+      final String classCode = widget.classData['code'] ?? 'CS-101';
+
+      buffer.writeln("Smart Attendance System - Class Attendance Summary Report");
+      buffer.writeln("Class Name,$className");
+      buffer.writeln("Course Code,$classCode");
+      buffer.writeln("Total Enrolled Students,$_totalEnrolledCount");
+      buffer.writeln("Total Sessions Conducted,$_totalSessionsCount");
+      buffer.writeln("Overall Attendance Rate,${_overallAttendancePercentage.toStringAsFixed(1)}%");
+      buffer.writeln("");
+      buffer.writeln("Session PIN/ID,Date & Time,Student Name,Student ID,Status,Face Verified,BLE Proximity Verified");
+
+      for (var group in _sessionGroups) {
+        final String pin = group['short_id'] ?? '';
+        final String dateStr = group['date_str'] ?? '';
+
+        for (var p in group['present_roster']) {
+          final name = (p['student_name'] ?? '').replaceAll('"', '""');
+          final uname = (p['student_username'] ?? '').replaceAll('"', '""');
+          buffer.writeln('"$pin","$dateStr","$name","$uname","Present","Yes","Yes"');
+        }
+
+        for (var a in group['absent_roster']) {
+          final name = (a['name'] ?? '').replaceAll('"', '""');
+          final uname = (a['username'] ?? '').replaceAll('"', '""');
+          buffer.writeln('"$pin","$dateStr","$name","$uname","Absent","N/A","N/A"');
+        }
+      }
+
+      final directory = await getTemporaryDirectory();
+      final String filePath = '${directory.path}/${classCode}_Attendance_Report.csv';
+      final File file = File(filePath);
+      await file.writeAsString(buffer.toString());
+
+      if (!mounted) return;
+      await Share.shareXFiles([XFile(filePath)], text: '$className ($classCode) Attendance Summary Report');
+    } catch (e) {
+      debugPrint("CSV Export Error: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to export report: $e')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final String className = widget.classData['name'] ?? 'Class Details';
+    final String classCode = widget.classData['code'] ?? '';
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.classData['code']} History'),
+        title: Text('$className ($classCode)'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.ios_share_outlined),
+            tooltip: 'Export CSV Report',
+            onPressed: _exportCsvReport,
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _history.isEmpty
-              ? const Center(
-                  child: Text('No attendance records found.', style: TextStyle(color: Colors.grey)),
-                )
-              : ListView.builder(
-                  itemCount: _history.length,
-                  itemBuilder: (context, index) {
-                    final record = _history[index];
-                    final dateStr = record['timestamp'] != null 
-                        ? record['timestamp'].toString().substring(0, 16).replaceFirst('T', ' ')
-                        : 'Unknown Date';
-                    
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      color: Colors.white.withOpacity(0.02),
-                      child: ListTile(
-                        title: Text(record['student_name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('${record['student_username'] ?? ''}\n$dateStr', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                        isThreeLine: true,
-                        trailing: const Icon(Icons.check_circle, color: Color(0xFF34D399)),
+          : RefreshIndicator(
+              onRefresh: _fetchData,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Top Executive Metrics Summary Header
+                    _buildExecutiveMetricsHeader(),
+                    const SizedBox(height: 20),
+
+                    // Live Search Bar
+                    TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Search student or session PIN...',
+                        prefixIcon: const Icon(Icons.search, size: 20),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 18),
+                                onPressed: () => setState(() => _searchQuery = ''),
+                              )
+                            : null,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                    );
-                  },
+                      onChanged: (val) => setState(() => _searchQuery = val.trim().toLowerCase()),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Segmented Control (Sessions View vs Student Analytics View)
+                    _buildSegmentedTabToggle(),
+                    const SizedBox(height: 16),
+
+                    // View Content
+                    _selectedTabIndex == 0 
+                        ? _buildSessionWiseView() 
+                        : _buildStudentWiseView(),
+                  ],
                 ),
+              ),
+            ),
+    );
+  }
+
+  // Executive Metric Summary Cards Header
+  Widget _buildExecutiveMetricsHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Course Attendance Overview',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetricCard(
+                title: 'Sessions',
+                value: '$_totalSessionsCount',
+                icon: Icons.event_note,
+                iconColor: const Color(0xFF8B5CF6),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildMetricCard(
+                title: 'Avg Rate',
+                value: '${_overallAttendancePercentage.toStringAsFixed(1)}%',
+                icon: Icons.pie_chart_outline,
+                iconColor: _overallAttendancePercentage >= 75.0
+                    ? const Color(0xFF34D399)
+                    : const Color(0xFFFBBF24),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildMetricCard(
+                title: 'Enrolled',
+                value: '$_totalEnrolledCount Students',
+                icon: Icons.people_outline,
+                iconColor: Colors.blueAccent,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildMetricCard(
+                title: 'At-Risk (<75%)',
+                value: '$_atRiskStudentsCount Alert${_atRiskStudentsCount == 1 ? "" : "s"}',
+                icon: Icons.warning_amber_rounded,
+                iconColor: _atRiskStudentsCount > 0 ? const Color(0xFFEF4444) : const Color(0xFF34D399),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color iconColor,
+  }) {
+    return Card(
+      color: Colors.white.withValues(alpha: 0.02),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: iconColor.withValues(alpha: 0.15),
+              child: Icon(icon, size: 20, color: iconColor),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Segmented Control (By Session vs By Student)
+  Widget _buildSegmentedTabToggle() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1B29),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF2E2A3A)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () => setState(() => _selectedTabIndex = 0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _selectedTabIndex == 0 ? const Color(0xFF8B5CF6) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Text(
+                    'By Session (${_sessionGroups.length})',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: _selectedTabIndex == 0 ? Colors.white : Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: InkWell(
+              onTap: () => setState(() => _selectedTabIndex = 1),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: _selectedTabIndex == 1 ? const Color(0xFF8B5CF6) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Text(
+                    'Student Roster (${_studentStats.length})',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: _selectedTabIndex == 1 ? Colors.white : Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Tab 1: Session-Wise Breakdown List
+  Widget _buildSessionWiseView() {
+    final filteredSessions = _sessionGroups.where((group) {
+      if (_searchQuery.isEmpty) return true;
+      final String pin = (group['short_id'] ?? '').toString().toLowerCase();
+      final String dateStr = (group['date_str'] ?? '').toString().toLowerCase();
+      final bool matchPresent = (group['present_roster'] as List).any((p) =>
+          (p['student_name'] ?? '').toString().toLowerCase().contains(_searchQuery) ||
+          (p['student_username'] ?? '').toString().toLowerCase().contains(_searchQuery));
+      return pin.contains(_searchQuery) || dateStr.contains(_searchQuery) || matchPresent;
+    }).toList();
+
+    if (filteredSessions.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(32),
+        alignment: Alignment.center,
+        child: const Column(
+          children: [
+            Icon(Icons.event_busy, size: 48, color: Colors.grey),
+            SizedBox(height: 12),
+            Text('No sessions match your search.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: filteredSessions.length,
+      itemBuilder: (context, index) {
+        final group = filteredSessions[index];
+        final String pin = group['short_id'] ?? 'Session';
+        final String dateStr = group['date_str'] ?? '';
+        final List presentList = group['present_roster'] ?? [];
+        final List absentList = group['absent_roster'] ?? [];
+        final double pct = group['percentage'] ?? 0.0;
+
+        final Color pctColor = pct >= 75.0
+            ? const Color(0xFF34D399)
+            : (pct >= 50.0 ? const Color(0xFFFBBF24) : const Color(0xFFEF4444));
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ExpansionTile(
+            title: Text(
+              'Session PIN: $pin',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            subtitle: Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: pctColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: pctColor.withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                '${presentList.length}/$_totalEnrolledCount (${pct.toStringAsFixed(0)}%)',
+                style: TextStyle(color: pctColor, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ),
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Divider(color: Colors.white10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Verified Present (${presentList.length})',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF34D399), fontSize: 13),
+                        ),
+                        const Icon(Icons.check_circle_outline, color: Color(0xFF34D399), size: 16),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    presentList.isEmpty
+                        ? const Text('No students checked in.', style: TextStyle(color: Colors.grey, fontSize: 12))
+                        : Column(
+                            children: presentList.map((p) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.person, size: 16, color: Colors.grey),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '${p['student_name']} (${p['student_username']})',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                      ),
+                                    ),
+                                    const ContainerTag(label: 'Face ID', color: Color(0xFF34D399)),
+                                    const SizedBox(width: 4),
+                                    const ContainerTag(label: 'BLE', color: Color(0xFF8B5CF6)),
+                                    const SizedBox(width: 4),
+                                    const ContainerTag(label: 'TOTP', color: Colors.blueAccent),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Absent (${absentList.length})',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFEF4444), fontSize: 13),
+                        ),
+                        const Icon(Icons.cancel_outlined, color: Color(0xFFEF4444), size: 16),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    absentList.isEmpty
+                        ? const Text('Full attendance! All enrolled students present.', style: TextStyle(color: Color(0xFF34D399), fontSize: 12))
+                        : Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: absentList.map((a) {
+                              return Chip(
+                                visualDensity: VisualDensity.compact,
+                                backgroundColor: const Color(0xFFEF4444).withValues(alpha: 0.1),
+                                side: BorderSide(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+                                label: Text(
+                                  a['name'] ?? a['username'] ?? 'Student',
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444)),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Tab 2: Student Roster Analytics View
+  Widget _buildStudentWiseView() {
+    final filteredStudents = _studentStats.where((st) {
+      if (_searchQuery.isEmpty) return true;
+      final name = (st['name'] ?? '').toString().toLowerCase();
+      final uname = (st['username'] ?? '').toString().toLowerCase();
+      return name.contains(_searchQuery) || uname.contains(_searchQuery);
+    }).toList();
+
+    if (filteredStudents.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(32),
+        alignment: Alignment.center,
+        child: const Column(
+          children: [
+            Icon(Icons.person_search, size: 48, color: Colors.grey),
+            SizedBox(height: 12),
+            Text('No students match your search.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: filteredStudents.length,
+      itemBuilder: (context, index) {
+        final st = filteredStudents[index];
+        final String name = st['name'] ?? 'Student';
+        final String uname = st['username'] ?? '';
+        final int attended = st['attended_count'] ?? 0;
+        final int total = st['total_sessions'] ?? 0;
+        final double pct = st['percentage'] ?? 0.0;
+        final bool isAtRisk = st['is_at_risk'] ?? false;
+
+        final Color barColor = pct >= 75.0
+            ? const Color(0xFF34D399)
+            : (pct >= 50.0 ? const Color(0xFFFBBF24) : const Color(0xFFEF4444));
+
+        final initials = name.split(' ').map((n) => n.isNotEmpty ? n[0] : '').join().toUpperCase();
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(14.0),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                      child: Text(
+                        initials.length > 2 ? initials.substring(0, 2) : initials,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF8B5CF6)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'ID: $uname',
+                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${pct.toStringAsFixed(1)}%',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: barColor),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$attended / $total Attended',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: total > 0 ? (attended / total) : 1.0,
+                    backgroundColor: Colors.white10,
+                    valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                    minHeight: 6,
+                  ),
+                ),
+                if (isAtRisk) ...[
+                  const SizedBox(height: 8),
+                  const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFEF4444)),
+                      SizedBox(width: 4),
+                      Text(
+                        'Shortage Notice: Attendance is below 75% required threshold.',
+                        style: TextStyle(fontSize: 10, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  )
+                ]
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// Small badge tag component for verification signals
+class ContainerTag extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const ContainerTag({super.key, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color),
+      ),
     );
   }
 }

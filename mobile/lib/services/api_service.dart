@@ -126,7 +126,7 @@ class ApiService {
   // Fetch enrolled/taught classes
   static Future<List<dynamic>> getUserClasses(dynamic dummyId) async {
     final uid = currentUid;
-    print("getUserClasses: currentUid=$uid, currentUser=$currentUser");
+    debugPrint("getUserClasses: currentUid=$uid, currentUser=$currentUser");
     if (uid == null || currentUser == null) return [];
 
     final role = currentUser!['role'];
@@ -183,7 +183,7 @@ class ApiService {
   }) async {
     final uid = currentUid;
     if (uid == null) throw Exception('Not authenticated');
-    print("createClass: currentUid=$uid, creating code=$code");
+    debugPrint("createClass: currentUid=$uid, creating code=$code");
 
     // Verify code uniqueness
     final dupCheck = await FirebaseFirestore.instance
@@ -191,9 +191,9 @@ class ApiService {
         .where('code', isEqualTo: code)
         .get();
 
-    print("createClass dupCheck count: ${dupCheck.docs.length}");
+    debugPrint("createClass dupCheck count: ${dupCheck.docs.length}");
     for (var doc in dupCheck.docs) {
-      print("createClass: found duplicate doc: ${doc.id} => ${doc.data()}");
+      debugPrint("createClass: found duplicate doc: ${doc.id} => ${doc.data()}");
     }
 
     if (dupCheck.docs.isNotEmpty) {
@@ -360,12 +360,15 @@ class ApiService {
     }
 
     // 5. Save attendance record
+    final String sName = (currentUser!['name'] ?? currentUser!['username'] ?? 'Student').toString();
+    final String sUname = (currentUser!['username'] ?? uid).toString();
+
     final log = {
       'session_id': sessionDocId,
       'class_id': classId,
       'student_id': uid,
-      'student_name': currentUser!['name'],
-      'student_username': currentUser!['username'],
+      'student_name': sName,
+      'student_username': sUname,
       'timestamp': FieldValue.serverTimestamp(),
       'status': 'present',
       'verified_proximity': true,
@@ -386,7 +389,7 @@ class ApiService {
         .get();
 
     final docs = query.docs.map((doc) {
-      final data = doc.data() as Map<String, dynamic>;
+      final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data());
       // Map Server Timestamps to string logic for compatibility
       if (data['timestamp'] is Timestamp) {
         data['timestamp'] = (data['timestamp'] as Timestamp).toDate().toIso8601String();
@@ -411,7 +414,7 @@ class ApiService {
         .get();
 
     final docs = query.docs.map((doc) {
-      final data = doc.data() as Map<String, dynamic>;
+      final Map<String, dynamic> data = Map<String, dynamic>.from(doc.data());
       if (data['timestamp'] is Timestamp) {
         data['timestamp'] = (data['timestamp'] as Timestamp).toDate().toIso8601String();
       }
@@ -433,6 +436,72 @@ class ApiService {
       'is_active': false,
       'end_time': FieldValue.serverTimestamp(),
     });
+  }
+
+  // Fetch comprehensive class analytics payload (enrolled students, sessions, logs)
+  static Future<Map<String, dynamic>> getClassAnalyticsData(String classId) async {
+    final classDoc = await FirebaseFirestore.instance.collection('classes').doc(classId).get();
+    if (!classDoc.exists) throw Exception('Class document not found.');
+    
+    final classData = Map<String, dynamic>.from(classDoc.data()!);
+    classData['id'] = classDoc.id;
+
+    final List<dynamic> studentIds = classData['student_ids'] ?? [];
+
+    // 1. Fetch enrolled student profiles
+    List<Map<String, dynamic>> enrolledStudents = [];
+    if (studentIds.isNotEmpty) {
+      // Chunk query into batches of 10 for Firestore 'whereIn' limitation
+      for (int i = 0; i < studentIds.length; i += 10) {
+        final end = (i + 10 < studentIds.length) ? i + 10 : studentIds.length;
+        final batch = studentIds.sublist(i, end);
+        final userSnap = await FirebaseFirestore.instance
+            .collection('users')
+            .where(FieldPath.documentId, whereIn: batch)
+            .get();
+
+        for (var doc in userSnap.docs) {
+          final data = Map<String, dynamic>.from(doc.data());
+          data['id'] = doc.id;
+          enrolledStudents.add(data);
+        }
+      }
+    }
+
+    // Sort enrolled students alphabetically by name
+    enrolledStudents.sort((a, b) => (a['name'] ?? '').toString().compareTo((b['name'] ?? '').toString()));
+
+    // 2. Fetch class sessions
+    final sessionSnap = await FirebaseFirestore.instance
+        .collection('sessions')
+        .where('class_id', isEqualTo: classId)
+        .get();
+
+    List<Map<String, dynamic>> sessions = sessionSnap.docs.map((doc) {
+      final data = Map<String, dynamic>.from(doc.data());
+      data['id'] = doc.id;
+      if (data['start_time'] is Timestamp) {
+        data['start_time_iso'] = (data['start_time'] as Timestamp).toDate().toIso8601String();
+      }
+      return data;
+    }).toList();
+
+    sessions.sort((a, b) {
+      final String tA = a['start_time_iso'] ?? '';
+      final String tB = b['start_time_iso'] ?? '';
+      return tB.compareTo(tA);
+    });
+
+    // 3. Fetch all attendance logs for this class
+    final logs = await getClassAttendanceHistory(classId);
+    final List<Map<String, dynamic>> attendanceLogs = logs.map((l) => Map<String, dynamic>.from(l)).toList();
+
+    return {
+      'class': classData,
+      'enrolled_students': enrolledStudents,
+      'sessions': sessions,
+      'attendance_logs': attendanceLogs,
+    };
   }
 
   // --- CRYPTO HELPERS FOR OFFLINE MOCK SIGNALS ---
