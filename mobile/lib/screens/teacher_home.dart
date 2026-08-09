@@ -100,20 +100,21 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
 
   // Request Bluetooth permissions (needed for BLE peripheral mode on Android)
   Future<bool> _requestBlePermissions() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.bluetoothAdvertise,
-      Permission.bluetoothConnect,
-      Permission.location,
-    ].request();
+    try {
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.bluetoothAdvertise,
+        Permission.bluetoothConnect,
+        Permission.location,
+      ].request();
 
-    statuses.forEach((permission, status) {
-      print("BLE Permission: $permission => $status");
-    });
+      final locationGranted = (statuses[Permission.location]?.isGranted ?? false) ||
+                              (statuses[Permission.location]?.isLimited ?? false);
 
-    final advertiseGranted = statuses[Permission.bluetoothAdvertise]?.isGranted ?? false;
-    final connectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? false;
-
-    return advertiseGranted && connectGranted;
+      return locationGranted;
+    } catch (e) {
+      debugPrint("BLE permission request error: $e");
+      return true;
+    }
   }
 
   void _showClassOptions(Map<String, dynamic> classData) {
@@ -186,10 +187,11 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              ApiService.token = null;
-              ApiService.currentUser = null;
-              Navigator.pushReplacementNamed(context, '/login');
+            onPressed: () async {
+              await ApiService.clearUserSession();
+              if (context.mounted) {
+                Navigator.pushReplacementNamed(context, '/login');
+              }
             },
           )
         ],
@@ -341,20 +343,21 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   }
 
   Future<bool> _requestBlePermissions() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.bluetoothAdvertise,
-      Permission.bluetoothConnect,
-      Permission.location,
-    ].request();
+    try {
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.bluetoothAdvertise,
+        Permission.bluetoothConnect,
+        Permission.location,
+      ].request();
 
-    statuses.forEach((permission, status) {
-      print("BLE Permission: $permission => $status");
-    });
+      final locationGranted = (statuses[Permission.location]?.isGranted ?? false) ||
+                              (statuses[Permission.location]?.isLimited ?? false);
 
-    final advertiseGranted = statuses[Permission.bluetoothAdvertise]?.isGranted ?? false;
-    final connectGranted = statuses[Permission.bluetoothConnect]?.isGranted ?? false;
-
-    return advertiseGranted && connectGranted;
+      return locationGranted;
+    } catch (e) {
+      debugPrint("BLE permission request error: $e");
+      return true;
+    }
   }
 
   Future<void> _checkActiveSession() async {
@@ -469,10 +472,12 @@ class _ActiveSessionScreenState extends State<ActiveSessionScreen> {
   // Turn off BLE broadcasting
   Future<void> _stopBleAdvertising() async {
     try {
-      if (await _blePeripheral.isAdvertising) {
-        await _blePeripheral.stop();
+      await _blePeripheral.stop();
+      if (mounted) {
+        setState(() {
+          _isAdvertising = false;
+        });
       }
-      setState(() => _isAdvertising = false);
     } catch (e) {
       debugPrint("Failed to stop BLE advertising: $e");
     }

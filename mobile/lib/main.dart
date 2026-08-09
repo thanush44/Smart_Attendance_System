@@ -97,13 +97,45 @@ class SmartAttendanceApp extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
   @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _isLoading = true;
+  bool _hasSession = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSession();
+  }
+
+  Future<void> _checkSession() async {
+    final loggedIn = await ApiService.loadUserSession();
+    if (mounted) {
+      setState(() {
+        _hasSession = loggedIn;
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // Basic session routing helper.
-    if (ApiService.currentUser != null) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0D0B14),
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+        ),
+      );
+    }
+
+    if (_hasSession && ApiService.currentUser != null) {
       if (ApiService.currentUser!['role'] == 'teacher') {
         return const TeacherHomeScreen();
       } else {

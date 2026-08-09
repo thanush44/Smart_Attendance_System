@@ -1,0 +1,43 @@
+[debug] [2026-08-09T11:24:54.500Z] ----------------------------------------------------------------------
+[debug] [2026-08-09T11:24:54.502Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\vmbad\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-08-09T11:24:54.502Z] CLI Version:   14.22.0
+[debug] [2026-08-09T11:24:54.502Z] Platform:      win32
+[debug] [2026-08-09T11:24:54.502Z] Node Version:  v24.13.1
+[debug] [2026-08-09T11:24:54.502Z] Time:          Sun Aug 09 2026 16:54:54 GMT+0530 (India Standard Time)
+[debug] [2026-08-09T11:24:54.502Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-08-09T11:24:54.505Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2026-08-09T11:24:54.640Z] Object "" in "firebase.json" has unknown property: {"additionalProperty":"auth"}
+[debug] [2026-08-09T11:24:54.647Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-08-09T11:24:54.647Z] > authorizing via signed-in user (vmbadrinath111@gmail.com)
+[debug] [2026-08-09T11:24:54.647Z] [iam] checking project smart-attendence-16c63 for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-08-09T11:24:54.649Z] Checked if tokens are valid: false, expires at: 1785962384476
+[debug] [2026-08-09T11:24:54.649Z] Checked if tokens are valid: false, expires at: 1785962384476
+[debug] [2026-08-09T11:24:54.649Z] > refreshing access token with scopes: []
+[debug] [2026-08-09T11:24:54.651Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-08-09T11:24:54.651Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-08-09T11:24:54.801Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-08-09T11:24:54.801Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-08-09T11:24:54.810Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/smart-attendence-16c63:testIamPermissions [none]
+[debug] [2026-08-09T11:24:54.810Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/smart-attendence-16c63:testIamPermissions x-goog-quota-user=projects/smart-attendence-16c63
+[debug] [2026-08-09T11:24:54.810Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/smart-attendence-16c63:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-08-09T11:24:55.266Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-08-09T11:24:55.266Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2026-08-09T11:24:56.268Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/smart-attendence-16c63:testIamPermissions 200
+[debug] [2026-08-09T11:24:56.269Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/smart-attendence-16c63:testIamPermissions {}
+[debug] [2026-08-09T11:24:56.269Z] [iam] error while checking permissions, command may fail: Authorization failed. This account is missing the following required permissions on project smart-attendence-16c63:
+
+  firebase.projects.get
+  firebasehosting.sites.update
+[debug] [2026-08-09T11:24:56.270Z] Checked if tokens are valid: true, expires at: 1786278293801
+[debug] [2026-08-09T11:24:56.270Z] Checked if tokens are valid: true, expires at: 1786278293801
+[debug] [2026-08-09T11:24:56.270Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/smart-attendence-16c63 [none]
+[debug] [2026-08-09T11:24:56.780Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/smart-attendence-16c63 403
+[debug] [2026-08-09T11:24:56.780Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/smart-attendence-16c63 {"error":{"code":403,"message":"The caller does not have permission","status":"PERMISSION_DENIED"}}
+[debug] [2026-08-09T11:24:56.780Z] Request to https://firebase.googleapis.com/v1beta1/projects/smart-attendence-16c63 had HTTP Error: 403, The caller does not have permission
+[debug] [2026-08-09T11:24:56.981Z] FirebaseError: Request to https://firebase.googleapis.com/v1beta1/projects/smart-attendence-16c63 had HTTP Error: 403, The caller does not have permission
+    at responseToError (C:\Users\vmbad\AppData\Roaming\npm\node_modules\firebase-tools\lib\responseToError.js:53:12)
+    at RetryOperation._fn (C:\Users\vmbad\AppData\Roaming\npm\node_modules\firebase-tools\lib\apiv2.js:312:77)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[error] 
+[error] Error: Failed to get Firebase project smart-attendence-16c63. Please make sure the project exists and your account has permission to access it.

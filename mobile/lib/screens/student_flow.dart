@@ -93,34 +93,34 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
 
   // Trigger multi-step attendance process
   void _startAttendanceVerification() async {
-    // Request required camera and bluetooth/location permissions
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.camera,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.location,
-    ].request();
+    try {
+      // Request required camera and bluetooth/location permissions safely
+      Map<Permission, PermissionStatus> statuses = await [
+        Permission.camera,
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.location,
+      ].request();
 
-    final isCameraGranted = statuses[Permission.camera] == PermissionStatus.granted;
-    final isScanGranted = statuses[Permission.bluetoothScan] == PermissionStatus.granted;
-    final isConnectGranted = statuses[Permission.bluetoothConnect] == PermissionStatus.granted;
-    final isLocationGranted = statuses[Permission.location] == PermissionStatus.granted ||
-                             statuses[Permission.location] == PermissionStatus.limited;
+      if (!mounted) return;
 
-    if (!isCameraGranted || !isScanGranted || !isConnectGranted || !isLocationGranted) {
-      if (mounted) {
+      final isCameraGranted = statuses[Permission.camera]?.isGranted ?? false;
+      final isLocationGranted = (statuses[Permission.location]?.isGranted ?? false) ||
+                               (statuses[Permission.location]?.isLimited ?? false);
+
+      if (!isCameraGranted || !isLocationGranted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Camera, Bluetooth, and Location permissions are required to check in.')),
+          const SnackBar(content: Text('Camera and Location/Bluetooth permissions are required to check in.')),
         );
+        return;
       }
-      return;
-    }
 
-    if (mounted) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const AttendanceWizard()),
       );
+    } catch (e) {
+      debugPrint("Error handling permissions: $e");
     }
   }
 
@@ -132,10 +132,11 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () {
-              ApiService.token = null;
-              ApiService.currentUser = null;
-              Navigator.pushReplacementNamed(context, '/login');
+            onPressed: () async {
+              await ApiService.clearUserSession();
+              if (context.mounted) {
+                Navigator.pushReplacementNamed(context, '/login');
+              }
             },
           )
         ],

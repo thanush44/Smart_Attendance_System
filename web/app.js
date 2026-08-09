@@ -45,9 +45,56 @@ window.addEventListener("DOMContentLoaded", () => {
     
     if (sessionId) {
         sessionInput.value = sessionId;
-        connectToSession(sessionId);
+        connectToSession(sessionId, true);
     }
 });
+
+// Reset web dashboard back to initial clean home state
+function resetToHomeState() {
+    if (otpInterval) clearInterval(otpInterval);
+    otpInterval = null;
+    currentToken = null;
+    currentSessionId = null;
+
+    if (unsubscribeAttendance) {
+        unsubscribeAttendance();
+        unsubscribeAttendance = null;
+    }
+    if (unsubscribeSession) {
+        unsubscribeSession();
+        unsubscribeSession = null;
+    }
+
+    // Clean URL query parameters so subsequent refreshes stay on home state
+    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+    window.history.pushState({ path: cleanUrl }, '', cleanUrl);
+
+    if (sessionInput) sessionInput.value = "";
+    if (classTitleEl) classTitleEl.innerText = "Classroom Projector";
+    if (classCodeEl) classCodeEl.innerText = "Enter PIN to Connect";
+    if (bleUuidEl) bleUuidEl.innerText = "N/A";
+    
+    if (connectionStatusEl) {
+        connectionStatusEl.className = "text-sm font-semibold text-gray-400 flex items-center gap-2 justify-end";
+        connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-gray-500"></span> Disconnected`;
+    }
+
+    if (closeSessionBtn) closeSessionBtn.style.display = "none";
+
+    if (qrcodeContainer) {
+        qrcodeContainer.innerHTML = `
+            <div class="text-center py-8 text-gray-400">
+                <i class="fa-solid fa-qrcode text-6xl block mb-4 opacity-30"></i>
+                <span class="font-bold text-lg block text-gray-300">Enter Class Session PIN to Start</span>
+                <span class="text-xs text-gray-500">Session PIN will be displayed on the teacher's phone app.</span>
+            </div>
+        `;
+    }
+
+    if (studentsGrid) studentsGrid.innerHTML = "";
+    if (presentCountEl) presentCountEl.innerText = "0";
+    showEmptyState();
+}
 
 // Manual connection trigger
 loadBtn.addEventListener("click", () => {
@@ -57,7 +104,7 @@ loadBtn.addEventListener("click", () => {
         const newurl = window.location.protocol + "//" + window.location.host + window.location.pathname + `?session_id=${sessionId}`;
         window.history.pushState({path:newurl}, '', newurl);
         
-        connectToSession(sessionId);
+        connectToSession(sessionId, false);
     } else {
         alert("Please enter a valid Session Document ID.");
     }
@@ -70,6 +117,11 @@ function handleSessionEnded() {
     otpInterval = null;
     currentToken = null;
     
+    // Clear URL query parameters so refreshing page goes straight to home state
+    const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+    window.history.pushState({ path: cleanUrl }, '', cleanUrl);
+    if (sessionInput) sessionInput.value = "";
+
     classCodeEl.innerText = "Session Ended";
     connectionStatusEl.className = "text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end";
     connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Session Closed`;
@@ -81,22 +133,13 @@ function handleSessionEnded() {
         <div class="text-rose-400 text-center py-8">
             <i class="fa-solid fa-circle-xmark text-5xl block mb-3 animate-bounce"></i>
             <span class="font-bold text-lg block">Attendance Closed</span>
-            <span class="text-xs text-gray-400">The teacher has ended this session.</span>
+            <span class="text-xs text-gray-400 block mt-1">The teacher has ended this session.</span>
         </div>
     `;
-    
-    if (unsubscribeAttendance) {
-        unsubscribeAttendance();
-        unsubscribeAttendance = null;
-    }
-    if (unsubscribeSession) {
-        unsubscribeSession();
-        unsubscribeSession = null;
-    }
 }
 
 // Connect to Firestore Session and set up real-time listener
-async function connectToSession(sessionId) {
+async function connectToSession(sessionId, isAutoConnect = false) {
     // Clean up previous listeners & intervals
     if (otpInterval) clearInterval(otpInterval);
     if (unsubscribeAttendance) unsubscribeAttendance();
@@ -104,7 +147,7 @@ async function connectToSession(sessionId) {
     
     // Set status to connecting
     connectionStatusEl.className = "text-sm font-semibold text-amber-500 flex items-center gap-2 justify-end";
-    connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span> Connecting to Firestore...`;
+    connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span> Connecting to Cloud...`;
     
     // Clear student grid and count
     studentsGrid.innerHTML = "";
@@ -124,10 +167,10 @@ async function connectToSession(sessionId) {
                 .get();
                 
             if (querySnapshot.empty) {
-                alert("No active session found matching PIN: " + sessionId);
-                connectionStatusEl.className = "text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end";
-                connectionStatusEl.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Active PIN Not Found`;
-                qrcodeContainer.innerHTML = `<div class="text-rose-400 text-center"><i class="fa-solid fa-triangle-exclamation text-4xl block mb-2"></i> PIN Not Found or Expired</div>`;
+                if (!isAutoConnect) {
+                    alert("No active session found matching PIN: " + sessionId);
+                }
+                resetToHomeState();
                 return;
             }
             
@@ -136,24 +179,77 @@ async function connectToSession(sessionId) {
 
         currentSessionId = docId;
 
+        // Start listening to the attendance collection for this session ID immediately
+        if (!unsubscribeAttendance) {
+            unsubscribeAttendance = db.collection("attendance")
+                .where("session_id", "==", docId)
+                .onSnapshot((snapshot) => {
+                    if (!snapshot || snapshot.empty) {
+                        presentCountEl.innerText = "0";
+                        showEmptyState();
+                    } else {
+                        hideEmptyState();
+                        presentCountEl.innerText = snapshot.docs.length.toString();
+                        studentsGrid.innerHTML = "";
+
+                        // In-memory sort by timestamp ascending
+                        const docs = snapshot.docs.sort((a, b) => {
+                            const tA = a.data().timestamp ? (a.data().timestamp.seconds || 0) : 0;
+                            const tB = b.data().timestamp ? (b.data().timestamp.seconds || 0) : 0;
+                            return tA - tB;
+                        });
+
+                        docs.forEach((doc) => {
+                            const checkin = doc.data();
+                            let timeStr = "";
+                            if (checkin.timestamp && checkin.timestamp.toDate) {
+                                const date = checkin.timestamp.toDate();
+                                timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                            } else {
+                                timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                            }
+
+                            addStudentToGrid({
+                                student_id: checkin.student_id,
+                                student_name: checkin.student_name,
+                                student_username: checkin.student_username,
+                                time_str: timeStr
+                            });
+                        });
+                    }
+                }, (err) => {
+                    console.error("Firestore attendance listening error: ", err);
+                });
+        }
+
         // Start listening to the Session Document in real time
         unsubscribeSession = db.collection("sessions").doc(docId)
             .onSnapshot((sessionDoc) => {
                 if (!sessionDoc.exists) {
-                    handleSessionEnded();
+                    if (isAutoConnect) {
+                        resetToHomeState();
+                    } else {
+                        handleSessionEnded();
+                    }
                     return;
                 }
                 
                 const sessionData = sessionDoc.data();
-                if (!sessionData.is_active) {
-                    handleSessionEnded();
-                    return;
-                }
                 
                 // Render class info
-                classTitleEl.innerText = sessionData.class_name;
+                classTitleEl.innerText = sessionData.class_name || "Class Session";
+                bleUuidEl.innerText = sessionData.ble_uuid || "";
+
+                if (!sessionData.is_active) {
+                    if (isAutoConnect) {
+                        resetToHomeState();
+                    } else {
+                        handleSessionEnded();
+                    }
+                    return;
+                }
+
                 classCodeEl.innerText = "Session Active";
-                bleUuidEl.innerText = sessionData.ble_uuid;
 
                 // Show Close Session button
                 if (closeSessionBtn) closeSessionBtn.style.display = "flex";
@@ -206,38 +302,6 @@ async function connectToSession(sessionId) {
                             }
                         }
                     }, 1000);
-                }
-
-                // Start listening to the attendance collection for this session ID
-                if (!unsubscribeAttendance) {
-                    unsubscribeAttendance = db.collection("attendance")
-                        .where("session_id", "==", docId)
-                        .orderBy("timestamp", "asc")
-                        .onSnapshot((snapshot) => {
-                            snapshot.docChanges().forEach((change) => {
-                                if (change.type === "added") {
-                                    hideEmptyState();
-                                    const checkin = change.doc.data();
-                                    
-                                    let timeStr = "";
-                                    if (checkin.timestamp) {
-                                        const date = checkin.timestamp.toDate();
-                                        timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                                    } else {
-                                        timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                                    }
-
-                                    addStudentToGrid({
-                                        student_id: checkin.student_id,
-                                        student_name: checkin.student_name,
-                                        student_username: checkin.student_username,
-                                        time_str: timeStr
-                                    });
-                                }
-                            });
-                        }, (err) => {
-                            console.error("Firestore listening error: ", err);
-                        });
                 }
             }, (err) => {
                 console.error("Session snapshot error:", err);

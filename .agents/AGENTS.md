@@ -27,3 +27,8 @@
 6. **REST API & TOTP Specification**:
    - TOTP secret key generated as Base32 per session (`pyotp.random_base32()`).
    - TOTP refreshed every 10 seconds (`pyotp.TOTP(secret, interval=10)`). Token validation window is 1 step (`valid_window=1`).
+
+7. **Flutter Interactive Run & Hot Restart Workflow**:
+   - Keep `flutter run` active in interactive mode on connected mobile devices (`RMX3868`).
+   - Whenever code edits are made to `mobile/lib/`, immediately send Hot Restart (`R`) or Hot Reload (`r`) input to the active background Flutter task using `manage_task(send_input)`.
+

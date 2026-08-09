@@ -2,12 +2,59 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dart_dash_otp/dart_dash_otp.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:math';
 import 'dart:convert';
 
 class ApiService {
   static String? token; // Keeps compatibility with existing wrappers
   static Map<String, dynamic>? currentUser;
+
+  // Save session to SharedPreferences
+  static Future<void> saveUserSession(Map<String, dynamic> user, String? tokenStr) async {
+    currentUser = user;
+    token = tokenStr;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_session', jsonEncode(user));
+      if (tokenStr != null) {
+        await prefs.setString('user_token', tokenStr);
+      }
+    } catch (e) {
+      debugPrint("Error saving user session: $e");
+    }
+  }
+
+  // Load session from SharedPreferences
+  static Future<bool> loadUserSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userStr = prefs.getString('user_session');
+      if (userStr != null) {
+        currentUser = jsonDecode(userStr);
+        token = prefs.getString('user_token');
+        return currentUser != null;
+      }
+    } catch (e) {
+      debugPrint("Error loading user session: $e");
+    }
+    return false;
+  }
+
+  // Clear session on logout
+  static Future<void> clearUserSession() async {
+    currentUser = null;
+    token = null;
+    try {
+      await FirebaseAuth.instance.signOut();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('user_session');
+      await prefs.remove('user_token');
+    } catch (e) {
+      debugPrint("Error clearing user session: $e");
+    }
+  }
 
   // Helpers to get current Firebase user UID
   static String? get currentUid => FirebaseAuth.instance.currentUser?.uid;
@@ -20,8 +67,6 @@ class ApiService {
     required String role,
     String? faceEmbedding,
   }) async {
-    // 1. Create User in Firebase Auth (Username is used as email.
-    // For simplicity, if username is not an email format, we can append @smartattendance.com)
     final email = username.contains('@') ? username : '$username@smartattendance.com';
     
     UserCredential credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
@@ -40,8 +85,10 @@ class ApiService {
       'created_at': FieldValue.serverTimestamp(),
     };
 
-    // 2. Save user details to Firestore
+    // Save user details to Firestore
     await FirebaseFirestore.instance.collection('users').doc(uid).set(userData);
+
+    await saveUserSession(userData, uid);
 
     return userData;
   }
@@ -67,7 +114,7 @@ class ApiService {
     }
 
     final userData = doc.data() as Map<String, dynamic>;
-    currentUser = userData;
+    await saveUserSession(userData, uid);
     token = uid; // Set dummy token using Firebase UID to keep wrapper happy
     
     return {
@@ -338,7 +385,7 @@ class ApiService {
         .where('session_id', isEqualTo: sessionDocId)
         .get();
 
-    return query.docs.map((doc) {
+    final docs = query.docs.map((doc) {
       final data = doc.data() as Map<String, dynamic>;
       // Map Server Timestamps to string logic for compatibility
       if (data['timestamp'] is Timestamp) {
@@ -346,6 +393,14 @@ class ApiService {
       }
       return data;
     }).toList();
+
+    docs.sort((a, b) {
+      final String tA = a['timestamp'] ?? '';
+      final String tB = b['timestamp'] ?? '';
+      return tB.compareTo(tA);
+    });
+
+    return docs;
   }
 
   // Fetch class attendance history (Teacher)
@@ -353,16 +408,23 @@ class ApiService {
     final query = await FirebaseFirestore.instance
         .collection('attendance')
         .where('class_id', isEqualTo: classId)
-        .orderBy('timestamp', descending: true)
         .get();
 
-    return query.docs.map((doc) {
+    final docs = query.docs.map((doc) {
       final data = doc.data() as Map<String, dynamic>;
       if (data['timestamp'] is Timestamp) {
         data['timestamp'] = (data['timestamp'] as Timestamp).toDate().toIso8601String();
       }
       return data;
     }).toList();
+
+    docs.sort((a, b) {
+      final String tA = a['timestamp'] ?? '';
+      final String tB = b['timestamp'] ?? '';
+      return tB.compareTo(tA);
+    });
+
+    return docs;
   }
 
   // Close an active attendance session
