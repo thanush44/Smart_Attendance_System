@@ -42,8 +42,17 @@ const sessionInput = document.getElementById("session-input");
 const loadBtn = document.getElementById("load-btn");
 const closeSessionBtn = document.getElementById("close-session-btn");
 
-// Initialize page on load
+// Initialize page on load with cinematic splash screen dismissal
 window.addEventListener("DOMContentLoaded", () => {
+    // Dismiss intro splash screen after 2.5 seconds
+    setTimeout(() => {
+        const splash = document.getElementById("intro-splash");
+        if (splash) {
+            splash.style.opacity = "0";
+            splash.style.visibility = "hidden";
+        }
+    }, 2500);
+
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get("session_id");
     
@@ -135,6 +144,8 @@ function resetToHomeState() {
     if (sessionPinDisplayEl) sessionPinDisplayEl.innerText = "------";
     if (bleUuidEl) bleUuidEl.innerText = "Waiting for session...";
     if (laserBeamEl) laserBeamEl.style.display = "none";
+    const qrEmblemEl = document.getElementById("qr-emblem");
+    if (qrEmblemEl) qrEmblemEl.style.display = "none";
 
     if (connectionStatusEl) {
         connectionStatusEl.className = "text-xs font-semibold text-gray-400 flex items-center gap-2 justify-end";
@@ -437,6 +448,9 @@ async function connectToSession(sessionId, isAutoConnect = false) {
 function renderQRCode(token) {
     qrcodeContainer.innerHTML = "";
     
+    const qrEmblemEl = document.getElementById("qr-emblem");
+    if (qrEmblemEl) qrEmblemEl.style.display = "block";
+
     const payload = JSON.stringify({
         session_id: currentSessionId,
         token: token

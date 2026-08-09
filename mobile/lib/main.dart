@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
-import 'screens/student_flow.dart';
+import 'screens/splash_screen.dart';
 import 'screens/teacher_home.dart';
 import 'services/api_service.dart';
 
@@ -24,11 +24,11 @@ class SmartAttendanceApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        primaryColor: const Color(0xFF8B5CF6), // Purple accent
-        scaffoldBackgroundColor: const Color(0xFF0D0B14), // Dark deep background
+        primaryColor: const Color(0xFF8B5CF6),
+        scaffoldBackgroundColor: const Color(0xFF0D0B14),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF8B5CF6),
-          secondary: Color(0xFF34D399), // Emerald accent
+          secondary: Color(0xFF34D399),
           surface: Color(0xFF1E1B29),
           error: Color(0xFFEF4444),
         ),
@@ -105,7 +105,6 @@ class AuthWrapper extends StatefulWidget {
 
 class _AuthWrapperState extends State<AuthWrapper> {
   bool _isLoading = true;
-  bool _hasSession = false;
 
   @override
   void initState() {
@@ -114,10 +113,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Future<void> _checkSession() async {
-    final loggedIn = await ApiService.loadUserSession();
+    await ApiService.loadUserSession();
     if (mounted) {
       setState(() {
-        _hasSession = loggedIn;
         _isLoading = false;
       });
     }
@@ -127,20 +125,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
-        backgroundColor: Color(0xFF0D0B14),
+        backgroundColor: Color(0xFF09070F),
         body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+          child: CircularProgressIndicator(color: Color(0xFFD4AF37)),
         ),
       );
     }
 
-    if (_hasSession && ApiService.currentUser != null) {
-      if (ApiService.currentUser!['role'] == 'teacher') {
-        return const TeacherHomeScreen();
-      } else {
-        return const StudentFlowScreen();
-      }
-    }
-    return const LoginScreen();
+    return const SplashScreen();
   }
 }
