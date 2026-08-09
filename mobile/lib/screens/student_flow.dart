@@ -33,11 +33,13 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
     setState(() => _isLoading = true);
     try {
       final classes = await ApiService.getUserClasses(ApiService.currentUser!['id']);
+      if (!mounted) return;
       setState(() {
         _classes = classes;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to load courses: $e')),
@@ -77,6 +79,7 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
                   if (context.mounted) Navigator.pop(context);
                   _fetchClasses();
                 } catch (e) {
+                  if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Enrollment Failed: $e')),
                   );
@@ -156,7 +159,7 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
                       children: [
                         CircleAvatar(
                           radius: 26,
-                          backgroundColor: const Color(0xFF34D399).withOpacity(0.1),
+                          backgroundColor: const Color(0xFF34D399).withValues(alpha: 0.1),
                           child: const Icon(Icons.school, color: Color(0xFF34D399), size: 28),
                         ),
                         const SizedBox(width: 14),
@@ -213,7 +216,7 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.menu_book, size: 48, color: Colors.white.withOpacity(0.2)),
+                             Icon(Icons.menu_book, size: 48, color: Colors.white.withValues(alpha: 0.2)),
                             const SizedBox(height: 8),
                             const Text('Not enrolled in any classes yet.', style: TextStyle(color: Colors.grey, fontSize: 13)),
                           ],
@@ -225,7 +228,7 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
                           final c = _classes[index];
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
-                            color: Colors.white.withOpacity(0.01),
+                            color: Colors.white.withValues(alpha: 0.01),
                             child: ListTile(
                               title: Text(c['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                               subtitle: Text(c['code'], style: const TextStyle(color: Color(0xFF8B5CF6), fontSize: 12, fontWeight: FontWeight.w600)),
@@ -283,11 +286,11 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
             TextButton(
               onPressed: _reEnrollFace,
               style: TextButton.styleFrom(
-                backgroundColor: isLegacy ? const Color(0xFFFBBF24).withOpacity(0.1) : Colors.white10,
+                backgroundColor: isLegacy ? const Color(0xFFFBBF24).withValues(alpha: 0.1) : Colors.white10,
                 foregroundColor: isLegacy ? const Color(0xFFFBBF24) : Colors.white70,
               ),
               child: Text(isLegacy ? "Enroll Now" : "Update"),
-            )
+            ),
           ],
         ),
       ),
@@ -409,7 +412,7 @@ class _StudentFlowScreenState extends State<StudentFlowScreen> {
                 
                 if (context.mounted) {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Face template updated successfully!')),
                   );
                 }
@@ -522,7 +525,8 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
   bool _blinkPrompted = false;
   bool _blinkDone = false;
 
-  // Step 2: Scanned Data
+  // Step 2: QR Scanner States
+  MobileScannerController? _qrScannerController;
   String? _scannedSessionId;
   String? _scannedOtpToken;
   String? _submissionError;
@@ -543,6 +547,7 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
   @override
   void dispose() {
     _cameraController?.dispose();
+    _qrScannerController?.dispose();
     _faceDetector?.close();
     _bleScanSubscription?.cancel();
     super.dispose();
@@ -779,8 +784,14 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
           }
         });
 
-        Future.delayed(const Duration(milliseconds: 1500), () {
+        Future.delayed(const Duration(milliseconds: 1200), () async {
           if (mounted) {
+            // RELEASE HARDWARE CAMERA LOCK BEFORE GOING TO QR SCANNER PAGE
+            try {
+              await _cameraController?.dispose();
+            } catch (_) {}
+            _cameraController = null;
+
             if (isMatch) {
               setState(() {
                 _currentStep = 1; // Transition to Step 2 (QR Scan)
@@ -811,6 +822,7 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
       final Map<String, dynamic> data = jsonDecode(rawValue);
       
       if (data.containsKey('session_id') && data.containsKey('token')) {
+        _qrScannerController?.stop();
         setState(() {
           _scannedSessionId = data['session_id'].toString();
           _scannedOtpToken = data['token'].toString();
@@ -845,12 +857,36 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
         throw Exception("Bluetooth is not supported on this device.");
       }
 
-      // Check if Bluetooth is turned on
       if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
+        if (!mounted) return;
         setState(() {
           _bleStatusText = "Please turn on your Bluetooth.";
         });
         return;
+      }
+
+      // Fetch teacher session target ble_uuid & class code for strict matching
+      String targetBleUuid = '';
+      String targetClassCode = '';
+
+      if (_scannedSessionId != null) {
+        try {
+          final sessionDoc = await FirebaseFirestore.instance.collection('sessions').doc(_scannedSessionId).get();
+          if (sessionDoc.exists) {
+            final data = sessionDoc.data()!;
+            targetBleUuid = (data['ble_uuid'] ?? '').toString().toLowerCase().replaceAll('-', '');
+
+            final classId = data['class_id'];
+            if (classId != null) {
+              final classDoc = await FirebaseFirestore.instance.collection('classes').doc(classId.toString()).get();
+              if (classDoc.exists) {
+                targetClassCode = (classDoc.data()?['code'] ?? '').toString().trim();
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint("Failed to fetch target session BLE details: $e");
+        }
       }
 
       bool deviceFound = false;
@@ -858,39 +894,53 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
 
       _bleScanSubscription = FlutterBluePlus.scanResults.listen((results) {
         for (ScanResult r in results) {
-          final String localName = r.advertisementData.localName;
           final String advName = r.advertisementData.advName;
           final String platformName = r.device.platformName;
-          final String serviceUuids = r.advertisementData.serviceUuids.toString();
+          final List<String> uuids = r.advertisementData.serviceUuids
+              .map((u) => u.toString().toLowerCase().replaceAll('-', ''))
+              .toList();
           final int rssi = r.rssi;
-          
-          debugPrint("Scanned BLE: advName='$advName', localName='$localName', platformName='$platformName', uuids='$serviceUuids', RSSI: $rssi");
-          
-          // Check if advertisement matches teacher classroom beacon pattern
-          final bool isSmartAtt = localName.contains("SmartAtt") || 
-                                  advName.contains("SmartAtt") || 
-                                  platformName.contains("SmartAtt") ||
-                                  (r.advertisementData.serviceUuids.isNotEmpty);
-          
-          if (isSmartAtt) {
+
+          debugPrint("Scanned BLE: advName='$advName', platformName='$platformName', uuids='$uuids', RSSI: $rssi");
+
+          // STRICT CHECK 1: Match teacher session target ble_uuid
+          bool isTeacherBeacon = false;
+          if (targetBleUuid.isNotEmpty && uuids.any((u) => u == targetBleUuid || u.contains(targetBleUuid))) {
+            isTeacherBeacon = true;
+          }
+
+          // STRICT CHECK 2: Match teacher class beacon name pattern (SmartAtt)
+          if (!isTeacherBeacon) {
+            if (targetClassCode.isNotEmpty &&
+                (advName.contains("SmartAtt_$targetClassCode") || platformName.contains("SmartAtt_$targetClassCode"))) {
+              isTeacherBeacon = true;
+            } else if (advName.startsWith("SmartAtt") || platformName.startsWith("SmartAtt")) {
+              isTeacherBeacon = true;
+            }
+          }
+
+          // IGNORE random smartwatches/earbuds (DO NOT check generic serviceUuids.isNotEmpty)
+          if (isTeacherBeacon) {
             deviceFound = true;
-            
-            // Proximity threshold: -85 dBm reliably covers classroom range (8-10m)
-            if (rssi >= -85) {
+
+            // Calibrated classroom proximity threshold: -75 dBm (~5-8 meters radius inside classroom)
+            if (rssi >= -75) {
               _bleScanSubscription?.cancel();
               FlutterBluePlus.stopScan();
-              
+
+              if (!mounted) return;
               setState(() {
                 _bleProximityPassed = true;
-                _bleStatusText = "Proximity confirmed! (Strength: $rssi dBm)";
+                _bleStatusText = "Classroom proximity confirmed! (Signal: $rssi dBm)";
               });
 
               // Final step: Submit attendance payload to backend
               _submitAttendanceCheckin();
               break;
             } else {
+              if (!mounted) return;
               setState(() {
-                _bleStatusText = "Signal detected but too weak ($rssi dBm). Move closer to teacher.";
+                _bleStatusText = "Teacher beacon detected, but signal is too weak ($rssi dBm). Move closer to teacher.";
               });
             }
           }
@@ -898,14 +948,16 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
       });
 
       await Future.delayed(const Duration(seconds: 8));
-      
+
       if (!deviceFound && !_bleProximityPassed) {
+        if (!mounted) return;
         setState(() {
-          _bleStatusText = "Teacher beacon not found. Ensure teacher session is active and Bluetooth is enabled on teacher's phone.";
+          _bleStatusText = "Teacher classroom beacon not found. Ensure teacher session is active and Bluetooth is enabled on teacher's phone.";
         });
       }
 
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _bleStatusText = "BLE Scan failed: ${e.toString().replaceAll("Exception: ", "")}";
       });
@@ -943,8 +995,6 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
     return Scaffold(
       appBar: AppBar(title: const Text('Verification Flow')),
       body: Padding(
@@ -1075,13 +1125,37 @@ class _AttendanceWizardState extends State<AttendanceWizard> {
             const Text('Focus on the dynamic QR code displayed on the screen.', style: TextStyle(color: Colors.grey, fontSize: 11)),
             const SizedBox(height: 24),
             
-            // Mobile QR scanner camera preview widget
+            // Mobile QR scanner camera preview widget with hardware crash recovery
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: SizedBox(
-                width: 250,
-                height: 250,
+                width: 260,
+                height: 260,
                 child: MobileScanner(
+                  controller: _qrScannerController ??= MobileScannerController(
+                    detectionSpeed: DetectionSpeed.normal,
+                    facing: CameraFacing.back,
+                    torchEnabled: false,
+                  ),
+                  fit: BoxFit.cover,
+                  placeholderBuilder: (context, child) {
+                    return Container(
+                      color: Colors.black,
+                      child: const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(color: Color(0xFF8B5CF6)),
+                            SizedBox(height: 12),
+                            Text(
+                              'Opening Camera...',
+                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                   onDetect: _onQRScanned,
                 ),
               ),
@@ -1281,7 +1355,7 @@ class _ScanningOverlayState extends State<_ScanningOverlay> with SingleTickerPro
                   color: const Color(0xFF34D399),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF34D399).withOpacity(0.5),
+                      color: const Color(0xFF34D399).withValues(alpha: 0.5),
                       blurRadius: 10,
                       spreadRadius: 2,
                     )
@@ -1290,7 +1364,7 @@ class _ScanningOverlayState extends State<_ScanningOverlay> with SingleTickerPro
               ),
             ),
             Container(
-              color: const Color(0xFF34D399).withOpacity(0.05),
+              color: const Color(0xFF34D399).withValues(alpha: 0.05),
             ),
           ],
         );

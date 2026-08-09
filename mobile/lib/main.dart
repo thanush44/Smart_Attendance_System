@@ -30,7 +30,6 @@ class SmartAttendanceApp extends StatelessWidget {
           primary: Color(0xFF8B5CF6),
           secondary: Color(0xFF34D399), // Emerald accent
           surface: Color(0xFF1E1B29),
-          background: Color(0xFF0D0B14),
           error: Color(0xFFEF4444),
         ),
         fontFamily: 'Outfit',

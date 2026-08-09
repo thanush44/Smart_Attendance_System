@@ -99,6 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
           _registeredEmbedding = null;
         });
 
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Registration successful! Please log in.')),
         );
@@ -228,7 +229,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 
                 if (context.mounted) {
                   Navigator.of(context).pop();
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Face template enrolled successfully!')),
                   );
                 }
@@ -345,7 +346,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
                             blurRadius: 20,
                             offset: const Offset(0, 10),
                           )
@@ -387,9 +388,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.error.withOpacity(0.1),
+                        color: theme.colorScheme.error.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: theme.colorScheme.error.withOpacity(0.3)),
+                        border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.3)),
                       ),
                       child: Text(
                         _errorMessage!,
@@ -458,7 +459,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
                                 color: _role == 'student' 
-                                  ? const Color(0xFF8B5CF6).withOpacity(0.15) 
+                                  ? const Color(0xFF8B5CF6).withValues(alpha: 0.15) 
                                   : Colors.transparent,
                                 border: Border.all(
                                   color: _role == 'student' ? const Color(0xFF8B5CF6) : const Color(0xFF2E2A3A)
@@ -483,7 +484,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
                                 color: _role == 'teacher' 
-                                  ? const Color(0xFF8B5CF6).withOpacity(0.15) 
+                                  ? const Color(0xFF8B5CF6).withValues(alpha: 0.15) 
                                   : Colors.transparent,
                                 border: Border.all(
                                   color: _role == 'teacher' ? const Color(0xFF8B5CF6) : const Color(0xFF2E2A3A)
@@ -512,10 +513,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: _faceRegistered 
-                              ? const Color(0xFF34D399).withOpacity(0.1) 
-                              : const Color(0xFF8B5CF6).withOpacity(0.05),
+                              ? const Color(0xFF34D399).withValues(alpha: 0.1) 
+                              : const Color(0xFF8B5CF6).withValues(alpha: 0.05),
                             border: Border.all(
-                              color: _faceRegistered ? const Color(0xFF34D399) : const Color(0xFF8B5CF6).withOpacity(0.4),
+                              color: _faceRegistered ? const Color(0xFF34D399) : const Color(0xFF8B5CF6).withValues(alpha: 0.4),
                               style: BorderStyle.solid
                             ),
                             borderRadius: BorderRadius.circular(12)

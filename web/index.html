@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Attendance - Classroom Projector Screen</title>
+    <meta http-equiv="Cache-Control" content="max-age=0, no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Smart Attendance - Classroom Projector Dashboard</title>
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@300;400;500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Tailwind CSS for utility styles (custom custom styled components on top) -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- QRCode.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -16,49 +19,46 @@
     <style>
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: radial-gradient(circle at top right, #1a162b, #0d0b14);
+            background: radial-gradient(circle at top right, #161224, #09070f);
             color: #f3f4f6;
             min-height: 100vh;
             overflow-x: hidden;
         }
         .glass-panel {
             background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        }
-        .glow-green {
-            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
-            border-color: rgba(16, 185, 129, 0.4);
-        }
-        .glow-purple {
-            box-shadow: 0 0 20px rgba(139, 92, 246, 0.2);
-        }
-        .gradient-text {
-            background: linear-gradient(135deg, #a78bfa, #818cf8, #34d399);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.45);
         }
         .student-card {
-            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            animation: popInGlow 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(255, 255, 255, 0.07);
             transition: all 0.3s ease;
         }
         .student-card:hover {
             transform: translateY(-4px);
-            border-color: rgba(139, 92, 246, 0.3);
-            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(139, 92, 246, 0.4);
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: 0 8px 24px rgba(139, 92, 246, 0.15);
         }
-        @keyframes popIn {
+        @keyframes popInGlow {
             0% {
                 opacity: 0;
-                transform: scale(0.8) translateY(20px);
+                transform: scale(0.85) translateY(20px);
+                border-color: rgba(52, 211, 153, 0.8);
+                box-shadow: 0 0 30px rgba(52, 211, 153, 0.4);
+            }
+            50% {
+                border-color: rgba(52, 211, 153, 1);
+                box-shadow: 0 0 25px rgba(52, 211, 153, 0.5);
             }
             100% {
                 opacity: 1;
                 transform: scale(1) translateY(0);
+                border-color: rgba(255, 255, 255, 0.07);
+                box-shadow: none;
             }
         }
         #qrcode img {
@@ -66,172 +66,203 @@
             border-radius: 12px;
             padding: 8px;
             background: #ffffff;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
         }
-        .pulse-border {
+        .qr-wrapper {
             position: relative;
+            overflow: hidden;
         }
-        .pulse-border::after {
-            content: '';
+        .laser-line {
             position: absolute;
-            top: -4px; left: -4px; right: -4px; bottom: -4px;
-            border-radius: 16px;
-            border: 2px solid #8b5cf6;
-            opacity: 0;
-            animation: pulse 2s infinite;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #34d399, #8b5cf6, #34d399, transparent);
+            box-shadow: 0 0 15px #34d399, 0 0 8px #8b5cf6;
+            animation: laserScan 2.5s ease-in-out infinite alternate;
+            z-index: 10;
+            pointer-events: none;
         }
-        @keyframes pulse {
-            0% { transform: scale(1); opacity: 0.5; }
-            100% { transform: scale(1.05); opacity: 0; }
+        @keyframes laserScan {
+            0% { top: 4%; }
+            100% { top: 94%; }
         }
         /* Custom scrollbar */
         ::-webkit-scrollbar {
-            width: 8px;
+            width: 6px;
         }
         ::-webkit-scrollbar-track {
             background: rgba(255, 255, 255, 0.01);
         }
         ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.12);
             border-radius: 4px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.25);
         }
     </style>
 </head>
-<body class="p-6 md:p-8 flex flex-col justify-between">
+<body class="p-4 md:p-6 flex flex-col justify-between min-h-screen">
 
-    <!-- Top Bar -->
-    <header class="flex justify-between items-center mb-8 glass-panel rounded-2xl p-4 px-6">
+    <!-- Top Bar Header -->
+    <header class="flex justify-between items-center mb-6 glass-panel rounded-2xl p-4 px-6">
         <div class="flex items-center gap-3">
-            <div class="bg-gradient-to-tr from-violet-600 to-indigo-600 w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <i class="fa-solid fa-graduation-cap text-lg text-white"></i>
+            <div class="bg-gradient-to-tr from-violet-600 to-indigo-600 w-11 h-11 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/25">
+                <i class="fa-solid fa-graduation-cap text-xl text-white"></i>
             </div>
             <div>
-                <h1 class="text-xl font-bold tracking-tight">Smart<span class="text-violet-400">Attendance</span></h1>
-                <p class="text-xs text-gray-400">Secure Double-Factor Class Check-In</p>
+                <h1 class="text-xl font-extrabold tracking-tight font-['Outfit']">Smart<span class="text-violet-400">Attendance</span></h1>
+                <p class="text-xs text-gray-400 font-medium">Classroom Projector Live Dashboard</p>
             </div>
         </div>
-        <div class="flex items-center gap-6">
+
+        <div class="flex items-center gap-4 sm:gap-6">
+            <!-- Connection Status -->
             <div class="hidden sm:flex flex-col text-right">
-                <span class="text-xs text-gray-400">Server Connection</span>
-                <span id="connection-status" class="text-sm font-semibold text-rose-500 flex items-center gap-2 justify-end">
-                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span> Disconnected
+                <span class="text-[11px] text-gray-400 font-medium">Cloud Sync Status</span>
+                <span id="connection-status" class="text-xs font-semibold text-rose-500 flex items-center gap-2 justify-end">
+                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Disconnected
                 </span>
             </div>
-            <div class="bg-white/5 border border-white/10 rounded-xl p-2 px-4 text-center">
-                <span class="text-xs text-gray-400 block uppercase tracking-wider">Present</span>
-                <span id="present-count" class="text-xl font-extrabold text-emerald-400">0</span>
+
+            <!-- Live Class Turnout Gauge -->
+            <div class="bg-white/5 border border-white/10 rounded-xl p-2 px-4 flex items-center gap-3">
+                <div>
+                    <span class="text-[10px] text-gray-400 block uppercase tracking-wider font-semibold">Turnout Rate</span>
+                    <span id="present-ratio" class="text-sm font-extrabold text-emerald-400">0 / 0 Present</span>
+                </div>
+                <div class="w-16 bg-white/10 h-2 rounded-full overflow-hidden hidden md:block">
+                    <div id="turnout-bar" class="bg-emerald-400 h-full w-0 transition-all duration-500"></div>
+                </div>
             </div>
+
+            <!-- Fullscreen Toggle Button -->
+            <button id="fullscreen-btn" onclick="toggleFullscreen()" class="bg-white/5 hover:bg-white/10 border border-white/10 w-10 h-10 rounded-xl flex items-center justify-center text-gray-300 transition-all" title="Toggle Projector Fullscreen (F11)">
+                <i class="fa-solid fa-expand text-sm"></i>
+            </button>
         </div>
     </header>
 
     <!-- Main Content Grid -->
-    <main class="grid grid-cols-1 lg:grid-cols-12 gap-8 flex-grow">
+    <main class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow">
         
-        <!-- Left Column: Class Info & QR Code (Col-span 5) -->
+        <!-- Left Column: Session Info & Dynamic QR Scanner (Col 5) -->
         <section class="lg:col-span-5 flex flex-col gap-6">
             <div class="glass-panel rounded-3xl p-6 flex flex-col items-center justify-between text-center flex-grow relative overflow-hidden">
-                <!-- Decorative background elements -->
-                <div class="absolute top-0 right-0 w-48 h-48 bg-violet-600/10 rounded-full blur-3xl -z-10"></div>
-                <div class="absolute bottom-0 left-0 w-48 h-48 bg-emerald-600/5 rounded-full blur-3xl -z-10"></div>
+                <!-- Background Ambient Glow -->
+                <div class="absolute -top-12 -right-12 w-56 h-56 bg-violet-600/15 rounded-full blur-3xl -z-10"></div>
+                <div class="absolute -bottom-12 -left-12 w-56 h-56 bg-emerald-600/10 rounded-full blur-3xl -z-10"></div>
 
                 <div class="w-full">
-                    <span class="bg-violet-500/10 border border-violet-500/20 text-violet-300 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">
-                        Active Attendance Session
+                    <span id="session-badge" class="bg-violet-500/15 border border-violet-500/30 text-violet-300 text-xs font-bold px-3.5 py-1 rounded-full uppercase tracking-wider inline-block">
+                        Waiting for Session
                     </span>
-                    <h2 id="class-name" class="text-3xl font-extrabold mt-3 tracking-tight">Loading Class...</h2>
-                    <p id="class-code" class="text-indigo-300 font-medium text-sm mt-1 uppercase">---</p>
+                    <h2 id="class-name" class="text-3xl font-extrabold mt-3 tracking-tight font-['Outfit']">Classroom Projector</h2>
+                    <p id="class-code" class="text-indigo-300 font-semibold text-sm mt-1 uppercase tracking-wide">Enter PIN to Connect</p>
                 </div>
 
-                <!-- Dynamic QR Section -->
-                <div class="my-8 flex flex-col items-center justify-center">
-                    <div class="p-4 bg-white/5 rounded-2xl border border-white/10 shadow-inner relative pulse-border">
-                        <div id="qrcode" class="w-64 h-64 flex items-center justify-center bg-white rounded-xl">
-                            <!-- QR code library will render target here -->
-                            <i class="fa-solid fa-qrcode text-5xl text-violet-400 animate-pulse"></i>
+                <!-- Prominent Session PIN Banner (For students at the back of the room) -->
+                <div id="pin-banner" class="w-full my-3 bg-violet-950/40 border border-violet-500/30 rounded-2xl p-3 text-center">
+                    <span class="text-[11px] uppercase tracking-widest text-violet-400 font-bold block">Classroom Session PIN</span>
+                    <span id="session-pin-display" class="text-3xl font-['JetBrains_Mono'] font-extrabold tracking-widest text-white">------</span>
+                </div>
+
+                <!-- Dynamic QR Section with Laser Overlay -->
+                <div class="my-4 flex flex-col items-center justify-center w-full">
+                    <div class="p-4 bg-white/5 rounded-3xl border border-white/10 shadow-2xl relative qr-wrapper">
+                        <div class="laser-line" id="laser-beam" style="display: none;"></div>
+                        <div id="qrcode" class="w-64 h-64 flex items-center justify-center bg-white rounded-2xl overflow-hidden">
+                            <i class="fa-solid fa-qrcode text-6xl text-violet-400 animate-pulse"></i>
                         </div>
                     </div>
                     
-                    <!-- Expire Slider / Progress -->
-                    <div class="w-64 mt-6">
-                        <div class="flex justify-between text-xs text-gray-400 mb-1.5 font-medium">
-                            <span>Scanning Proximity Required</span>
-                            <span id="expiry-timer" class="text-violet-400">Code dynamic</span>
+                    <!-- Expiry & Dynamic Progress Bar -->
+                    <div class="w-64 mt-5">
+                        <div class="flex justify-between text-xs text-gray-400 mb-1.5 font-semibold">
+                            <span class="flex items-center gap-1"><i class="fa-solid fa-shield-halved text-emerald-400"></i> Double-Factor Verification</span>
+                            <span id="expiry-timer" class="text-violet-400 font-bold">Code dynamic</span>
                         </div>
-                        <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden border border-white/5">
-                            <div id="expiry-bar" class="bg-gradient-to-r from-violet-500 to-indigo-500 h-full w-full transition-all duration-1000 ease-linear"></div>
+                        <div class="w-full bg-white/5 h-2.5 rounded-full overflow-hidden border border-white/10">
+                            <div id="expiry-bar" class="bg-gradient-to-r from-violet-500 to-emerald-400 h-full w-full transition-all duration-1000 ease-linear"></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- BLE details -->
-                <div class="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-left">
+                <!-- BLE Proximity Details -->
+                <div class="w-full bg-white/5 border border-white/10 rounded-2xl p-3.5 text-left">
                     <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-                            <i class="fa-solid fa-bluetooth text-lg"></i>
+                        <div class="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                            <i class="fa-solid fa-bluetooth text-base"></i>
                         </div>
-                        <div>
-                            <span class="text-xs text-gray-400 block font-medium">Teacher Proximity BLE UUID</span>
-                            <code id="ble-uuid" class="text-xs font-mono text-indigo-300 break-all select-all">Waiting for session...</code>
+                        <div class="min-w-0">
+                            <span class="text-[11px] text-gray-400 block font-semibold">Teacher Device BLE Proximity UUID</span>
+                            <code id="ble-uuid" class="text-xs font-['JetBrains_Mono'] text-indigo-300 truncate block select-all">Waiting for session...</code>
                         </div>
                     </div>
                 </div>
 
-                <!-- Close Session Button (Hidden by default, shown when session active) -->
-                <button id="close-session-btn" style="display: none;" class="w-full mt-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl p-4 font-bold transition-all shadow-md shadow-rose-600/10 flex items-center justify-center gap-2">
-                    <i class="fa-solid fa-power-off"></i> Close Session Now
+                <!-- Close Session Button (Hidden by default, shown when session is active) -->
+                <button id="close-session-btn" style="display: none;" class="w-full mt-4 bg-rose-600/90 hover:bg-rose-600 text-white rounded-2xl p-3.5 font-bold transition-all shadow-lg shadow-rose-600/20 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-power-off"></i> Close Attendance Session
                 </button>
             </div>
         </section>
 
-        <!-- Right Column: Checked-in Students (Col-span 7) -->
-        <section class="lg:col-span-7 flex flex-col glass-panel rounded-3xl p-6 min-h-[500px]">
-            <div class="flex justify-between items-center mb-6">
+        <!-- Right Column: Checked-in Attendance Wall (Col 7) -->
+        <section class="lg:col-span-7 flex flex-col glass-panel rounded-3xl p-6 min-h-[520px]">
+            <div class="flex justify-between items-center mb-5">
                 <div>
-                    <h3 class="text-xl font-bold tracking-tight">Attendance Wall</h3>
-                    <p class="text-xs text-gray-400 mt-0.5">Real-time successful student check-ins</p>
+                    <h3 class="text-2xl font-extrabold tracking-tight font-['Outfit']">Attendance Wall</h3>
+                    <p class="text-xs text-gray-400 mt-0.5">Real-time verified student check-ins</p>
                 </div>
-                <div class="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full font-semibold">
-                    <i class="fa-solid fa-circle-check animate-pulse"></i> Live Syncing
+                <div class="flex items-center gap-3">
+                    <!-- Audio Chime Toggle Button -->
+                    <button id="sound-btn" onclick="toggleAudioChime()" class="text-xs text-gray-400 hover:text-white bg-white/5 border border-white/10 px-3 py-1.5 rounded-full flex items-center gap-1.5 transition-colors">
+                        <i id="sound-icon" class="fa-solid fa-volume-high text-violet-400"></i>
+                        <span id="sound-label">Sound On</span>
+                    </button>
+                    <div class="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-3.5 py-1.5 rounded-full font-bold">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> Live Syncing
+                    </div>
                 </div>
             </div>
 
-            <!-- Students Grid -->
-            <div id="students-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-4 overflow-y-auto max-h-[550px] pr-2 flex-grow content-start">
-                <!-- Placeholder when empty -->
-                <div id="empty-state" class="col-span-full py-20 flex flex-col items-center justify-center text-center text-gray-500">
-                    <div class="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-2xl mb-4 text-gray-400">
-                        <i class="fa-solid fa-users"></i>
+            <!-- Students Grid Container -->
+            <div id="students-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto max-h-[580px] pr-1 flex-grow content-start">
+                <!-- Clean Empty State -->
+                <div id="empty-state" class="col-span-full py-24 flex flex-col items-center justify-center text-center text-gray-500">
+                    <div class="w-20 h-20 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-3xl mb-4 text-violet-400 shadow-inner">
+                        <i class="fa-solid fa-users-viewfinder"></i>
                     </div>
-                    <p class="font-medium text-gray-300">Class Attendance is Active</p>
-                    <p class="text-xs text-gray-500 max-w-xs mt-1">Students should open the app, verify their face, and scan the QR code to check in.</p>
+                    <h4 class="font-bold text-lg text-gray-200">Waiting for Student Check-Ins</h4>
+                    <p class="text-xs text-gray-400 max-w-sm mt-1.5 leading-relaxed">
+                        Students should open their app, pass biometric face liveness check, and scan the QR code to check in.
+                    </p>
                 </div>
             </div>
         </section>
     </main>
 
-    <!-- Session URL Input modal/bar for easy launching -->
-    <footer class="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 glass-panel rounded-2xl p-4 text-sm text-gray-400">
+    <!-- Session PIN / ID Input Bar Footer -->
+    <footer class="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 glass-panel rounded-2xl p-4 text-sm text-gray-400">
         <div class="flex items-center gap-2">
-            <i class="fa-solid fa-circle-info text-violet-400"></i>
-            <span>Load a Session PIN or ID to view projector details:</span>
+            <i class="fa-solid fa-laptop-code text-violet-400 text-lg"></i>
+            <span class="text-xs sm:text-sm font-medium">Enter Class Session PIN or Document ID to connect projector:</span>
         </div>
-        <div class="flex gap-2 w-full sm:w-auto">
-            <input type="text" id="session-input" placeholder="Session PIN or ID" class="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 w-full sm:w-60 text-center font-semibold">
-            <button id="load-btn" class="bg-violet-600 hover:bg-violet-700 text-white rounded-xl px-4 py-2 font-semibold transition-colors shadow-md shadow-violet-600/10">
+        <div class="flex gap-2.5 w-full sm:w-auto">
+            <input type="text" id="session-input" placeholder="Enter 6-Digit PIN (e.g. 664087)" class="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-violet-500 w-full sm:w-64 text-center font-['JetBrains_Mono'] font-extrabold tracking-wider">
+            <button id="load-btn" class="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl px-5 py-2.5 font-bold transition-all shadow-lg shadow-violet-600/20 shrink-0">
                 Connect
             </button>
         </div>
     </footer>
 
-    <!-- Firebase Compatibility SDKs -->
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <!-- OTPAuth Library for dynamic QR generation -->
+    <!-- OTPAuth UMD Library -->
     <script src="https://cdn.jsdelivr.net/npm/otpauth@9.3.1/dist/otpauth.umd.min.js"></script>
-    <!-- App JavaScript -->
-    <script src="app.js"></script>
+    <!-- App Logic -->
+    <script src="app.js?v=2.0.1"></script>
 </body>
 </html>
